@@ -44,7 +44,6 @@ class CallResult:
     decision: Decision
     duplicate: bool
 
-
 @dataclass(frozen=True)
 class LlmLabel:
     """Nhãn LLM cho cuộc gọi có hội thoại (tầng LLM ở đợt 3 sẽ tạo ra cái này)."""
