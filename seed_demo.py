@@ -63,48 +63,50 @@ def main():
     conn = connect(DB_PATH)
     svc = CallbackService(conn, cfg, config_version="demo-v1")
 
-    # 1. P1 - KH xác nhận ngay (happy path)
+    # 1. LLM tin cậy thấp, chuyển cho ĐTV, nhãn kỳ vọng unclear
     run_case(svc, Clock(at(21, 10)),
-             Alert("A001", "CARD-A", "KH-A", 15_000_000, approved=True, card_blocked=False,
-                   created_at=at(21, 10)),
-             Scripted(DialResult("c1", "Completed", answered_seconds=55,
-                                 llm=label(Outcome.VERIFIED_CONFIRMED), verified=True)))
+         Alert("A006", "CARD-F", "KH-F", 4_000_000, approved=False, card_blocked=True,
+               created_at=at(21, 10)),
+         Scripted(DialResult("c6", "Completed", answered_seconds=30,
+                             llm=label(Outcome.VERIFIED_CONFIRMED, confidence=0.45))))
 
-    # 2. P2 - không nghe máy nhiều lần, cuối cùng KH xác nhận
-    run_case(svc, Clock(at(21, 14)),
-             Alert("A002", "CARD-B", "KH-B", 2_500_000, approved=False, card_blocked=True,
-                   created_at=at(21, 14)),
-             Scripted(DialResult("c2a", "No Answer"),
-                      DialResult("c2b", "No Answer"),
-                      DialResult("c2c", "Completed", answered_seconds=42,
-                                 llm=label(Outcome.VERIFIED_CONFIRMED))))
+    # 2. Khách yêu cầu không liên hệ, dừng bot, kỳ vọng case dừng lại, không gọi lại
+    run_case(svc, Clock(at(21, 11)),
+         Alert("A007", "CARD-G", "KH-G", 1_200_000, approved=False, card_blocked=True,
+               created_at=at(21, 11)),
+         Scripted(DialResult("c7", "Completed", answered_seconds=25,
+                             llm=label(Outcome.DO_NOT_CALL))))
 
-    # 3. P3 - KH phủ nhận giao dịch -> chuyển ĐTV (nghi gian lận thật)
-    run_case(svc, Clock(at(21, 15)),
-             Alert("A003", "CARD-C", "KH-C", 8_000_000, approved=False, card_blocked=False,
-                   created_at=at(21, 15)),
-             Scripted(DialResult("c3", "Completed", answered_seconds=38,
-                                 llm=label(Outcome.VERIFIED_DENIED))))
+    # 3. gọi số chính không được, thử số dự phòng, người nhà nghe, chủ thẻ confirm, kỳ vọng ng nhà nghe, bot lên lịch
+    run_case(svc, Clock(at(21, 12)),
+         Alert("A008", "CARD-H", "KH-H", 3_000_000, approved=False, card_blocked=True,
+               created_at=at(21, 12)),
+         Scripted(DialResult("c8a", "No Answer"),
+                  DialResult("c8b", "No Answer"),
+                  DialResult("c8c", "Completed", answered_seconds=20,
+                             llm=label(Outcome.RELATIVE_ANSWERED)),
+                  DialResult("c8d", "Completed", answered_seconds=40,
+                             llm=label(Outcome.VERIFIED_CONFIRMED))))
 
-    # 4. P1 - lỗi hệ thống rồi KH hẹn gọi lại
-    run_case(svc, Clock(at(21, 16)),
-             Alert("A004", "CARD-D", "KH-D", 60_000_000, approved=True, card_blocked=False,
-                   created_at=at(21, 16)),
-             Scripted(DialResult("c4a", "Failed", sip_code=503),       # lỗi SIP trunk
-                      DialResult("c4b", "Completed", answered_seconds=25,
-                                 llm=label(Outcome.CALLBACK_REQUESTED,
-                                           callback_at=at(21, 16, 45))),
-                      DialResult("c4c", "Completed", answered_seconds=50,
-                                 llm=label(Outcome.VERIFIED_CONFIRMED))))
+    # 4. Khách hẹn quá số lần cho phép, chuyển ĐTV, sau hai lần hẹn, yêu cầu hẹn lần thứ 3 được chuyển ĐTV theo giới hạn cấu hình
+    run_case(svc, Clock(at(21, 20)),
+         Alert("A009", "CARD-I", "KH-I", 2_000_000, approved=False, card_blocked=True,
+               created_at=at(21, 20)),
+         Scripted(DialResult("c9a", "Completed", answered_seconds=20,
+                             llm=label(Outcome.CALLBACK_REQUESTED, callback_at=at(21, 21, 30))),
+                  DialResult("c9b", "Completed", answered_seconds=20,
+                             llm=label(Outcome.CALLBACK_REQUESTED, callback_at=at(21, 21, 40))),
+                  DialResult("c9c", "Completed", answered_seconds=20,
+                             llm=label(Outcome.CALLBACK_REQUESTED, callback_at=at(21, 21, 50)))))
 
-    # 5. P2 - nhầm số rồi hết lượt
-    clock = Clock(at(21, 8))
-    svc.ingest_alert(Alert("A005", "CARD-E", "KH-E", 3_000_000, approved=False, card_blocked=True,
-                           created_at=at(21, 8)), PRIMARY, clock.now)  # không có số dự phòng
-    s = Scheduler(svc, Scripted(
-        DialResult("c5a", "Completed", answered_seconds=15, llm=label(Outcome.WRONG_NUMBER)),
-    ), SchedulerConfig(tick_s=10_000), clock=clock)
-    s.tick()
+    # 5. Lỗi hệ thống liên tục, báo động và ĐTV gọi thủ công
+    run_case(svc, Clock(at(21, 13)),
+         Alert("A010", "CARD-J", "KH-J", 60_000_000, approved=True, card_blocked=False,
+               created_at=at(21, 13)),
+         Scripted(DialResult("c10a", "Failed", sip_code=503),
+                  DialResult("c10b", "Failed", sip_code=503),
+                  DialResult("c10c", "Failed", sip_code=503),
+                  DialResult("c10d", "Failed", sip_code=503)))
 
     print(f"Đã tạo {DB_PATH} với 5 case demo.")
     print("Chạy tiếp:  python app.py")

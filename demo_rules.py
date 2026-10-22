@@ -55,16 +55,16 @@ def main():
         return Case(case_id="DEMO", card_ref="CARD-TOKEN-1", customer_id="KH-DEMO", phone=PRIMARY,
                     created_at=created, urgency=urgency, **kw)
 
-    simulate("P2 thẻ đã khóa: không nghe, lỗi hệ thống, đổi số, KH hẹn, xác nhận",
+    simulate("P2 thẻ đã khóa: không nghe, lỗi hệ thống, đổi số, Khách hẹn, xác nhận",
              case(Urgency.P2, datetime(2026, 10, 21, 20, 30, tzinfo=VN), phone_sms=ALT, card_open=False),
              [Outcome.BUSY, Outcome.SYSTEM_ERROR, Outcome.NO_ANSWER,
               (Outcome.CALLBACK_REQUESTED, {"callback_after": 120}), Outcome.VERIFIED_CONFIRMED], cfg)
 
-    simulate("P1 thẻ còn mở, GD đã cấp phép: KH không nghe máy cả ngày",
+    simulate("P1 thẻ còn mở, GD đã cấp phép: Khách không nghe máy cả ngày",
              case(Urgency.P1, datetime(2026, 10, 21, 9, 0, tzinfo=VN), phone_sms=ALT),
              [Outcome.NO_ANSWER] * 8, cfg)
 
-    simulate("P3 GD bị từ chối: nhầm số, gọi số SMS thì KH phủ nhận giao dịch",
+    simulate("P3 GD bị từ chối: nhầm số, gọi số SMS thì Khách phủ nhận giao dịch",
              case(Urgency.P3, datetime(2026, 10, 21, 7, 45, tzinfo=VN), phone_sms=ALT),
              [Outcome.WRONG_NUMBER, Outcome.VERIFIED_DENIED], cfg)
 
