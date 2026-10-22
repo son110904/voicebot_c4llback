@@ -1,2 +1,3 @@
 PyYAML>=6.0
+Flask>=3.0    # chỉ cần cho dashboard web demo (app.py)
 openai>=1.0   # chỉ cần khi gọi OpenAI thật; test và demo không dùng

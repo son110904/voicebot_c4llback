@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Danh sách case{% endblock %}
+{% block body %}
+<h1>Case voicebot đang theo dõi</h1>
+<p class="muted">Nguồn: <code>{{ db_path }}</code>. {{ cases|length }} case.</p>
+
+<div class="card">
+<table>
+<thead><tr>
+<th>Case</th><th>Mức</th><th>Trạng thái</th><th>Thẻ / KH</th>
+<th>Cảnh báo</th><th>Đã gọi</th><th>SMS</th><th>Gọi tiếp</th>
+</tr></thead>
+<tbody>
+{% for c in cases %}
+<tr class="row-link" onclick="location.href='/case/{{ c.case_id }}'">
+  <td><strong>{{ c.case_id }}</strong></td>
+  <td><span class="badge badge-{{ c.urgency|lower }}">{{ c.urgency }}</span></td>
+  <td><span class="badge badge-{{ status_color[c.status] }}">{{ c.status }}</span></td>
+  <td>{{ c.card_ref }}<br><span class="muted">{{ c.customer_id }}</span></td>
+  <td>{{ c.alerts }}{% if c.alert_count > 1 %} <span class="muted">(gộp {{ c.alert_count }})</span>{% endif %}</td>
+  <td>{{ c.calls }} <span class="muted">(tính lượt: {{ c.counted }})</span></td>
+  <td>{{ c.sms_sent }}</td>
+  <td>{% if c.next_at %}{{ c.next_at|dt }}{% else %}<span class="muted">—</span>{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<p class="muted">Click 1 dòng để xem timeline chi tiết của case đó.</p>
+{% endblock %}

@@ -37,6 +37,18 @@ python demo_db.py
 
 Dùng Python 3.10+.
 
+## Dashboard web (demo cho mentor)
+
+```bash
+python seed_demo.py     # tạo demo.db với 5 case điển hình
+python app.py           # http://localhost:5000
+```
+
+Trên Codespaces, port 5000 sẽ tự được chuyển ra ngoài - click vào tab PORTS,
+copy URL public cho mentor. Mỗi case có timeline các quyết định của rule engine
+(mỗi bước có badge nhóm, lý do, lịch gọi tiếp, SMS, nhãn LLM) và danh sách cuộc
+gọi + outbox + SMS.
+
 ### Dialer tích hợp Freeswitch/Asterisk
 
 Dialer là callable `(ScheduledCall, Decision) -> DialResult`. Trong `DialResult` điền `pbx_status`, `sip_code`, `answered_seconds`, `machine_detected`, `verified` (bot đã xác thực thành công trước khi rớt chưa), và `llm` (nếu đã chạy LLM labeler ngay sau cuộc gọi).

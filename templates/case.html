@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ c.case_id }}{% endblock %}
+{% block body %}
+
+<h1>{{ c.case_id }}
+  <span class="badge badge-{{ c.urgency|lower }}">{{ c.urgency }}</span>
+  <span class="badge badge-{{ status_color[c.status] }}">{{ c.status }}</span>
+</h1>
+
+<div class="card">
+<dl class="grid">
+<dt>Mã thẻ (token)</dt><dd>{{ c.card_ref }}</dd>
+<dt>Mã khách hàng</dt><dd>{{ c.customer_id }}</dd>
+<dt>Số điện thoại chính</dt><dd>{{ c.phone }}</dd>
+<dt>Số dự phòng (Phone_SMS)</dt><dd>{{ c.phone_sms or '—' }}</dd>
+<dt>Thẻ còn mở</dt><dd>{{ 'có' if c.card_open else 'không (đã khóa)' }}</dd>
+<dt>Tạo lúc</dt><dd>{{ c.created_at|dt }}</dd>
+<dt>SMS đã gửi</dt><dd>{{ c.sms_sent }}</dd>
+<dt>Lần KH đã hẹn</dt><dd>{{ c.appointments }}</dd>
+<dt>KH chặn gọi</dt><dd>{{ 'có' if c.do_not_call else 'không' }}</dd>
+<dt>Số bị chặn</dt><dd>{{ blocked|join(', ') if blocked else '—' }}</dd>
+</dl>
+</div>
+
+<h2>Timeline các quyết định của rule engine</h2>
+<div class="card">
+<div class="timeline">
+{% for d in decisions %}
+{% set gcolor = group_color.get(d.detail_parsed.group, action_color.get(d.action, 'retry')) %}
+<div class="step step-{{ gcolor }}">
+  <div class="step-head">
+    <span class="time">{{ d.decided_at|dt }}</span>
+    <span class="kind">{{ d.kind }}</span>
+    <span class="badge badge-{{ action_color[d.action] }}">{{ d.action }}</span>
+    {% if d.detail_parsed.group %}<span class="badge badge-{{ gcolor }}">{{ d.detail_parsed.group }}</span>{% endif %}
+    <span class="muted">({{ d.rule_id }})</span>
+  </div>
+  <p class="step-reason">{{ d.reason }}</p>
+  <div class="step-meta">
+    {% if d.next_call_at %}Gọi lại lúc <strong>{{ d.next_call_at|dt }}</strong>
+      → <code>{{ d.detail_parsed.target_phone }}</code>{% if d.detail_parsed.appointment %}
+      <span class="muted">(KH hẹn)</span>{% endif %}
+    {% endif %}
+    {% if d.detail_parsed.sms_template %} · SMS <code>{{ d.detail_parsed.sms_template }}</code>
+      → <code>{{ d.detail_parsed.sms_to }}</code>{% endif %}
+    {% if d.detail_parsed.dtv_priority %} · ĐTV <code>{{ d.detail_parsed.dtv_priority }}</code>{% endif %}
+    {% if d.detail_parsed.ticket %} · ticket <code>{{ d.detail_parsed.ticket }}</code>{% endif %}
+    {% if d.detail_parsed.block_phone %} · chặn <code>{{ d.detail_parsed.block_phone }}</code>{% endif %}
+    {% if d.detail_parsed.ops_alert %}<br>⚠ {{ d.detail_parsed.ops_alert }}{% endif %}
+    {% if d.llm_label %}<br>LLM: <code>{{ d.llm_label }}</code>
+      (confidence {{ '%.2f'|format(d.llm_conf) }}){% endif %}
+  </div>
+</div>
+{% endfor %}
+</div>
+</div>
+
+<h2>Các cuộc gọi đã thực hiện ({{ attempts|length }})</h2>
+<div class="card">
+<table>
+<thead><tr><th>Bắt đầu</th><th>Số</th><th>Tổng đài</th><th>SIP</th>
+<th>Hội thoại (s)</th><th>Outcome</th><th>Tính lượt?</th></tr></thead>
+<tbody>
+{% for a in attempts %}
+<tr>
+  <td>{{ a.started_at|dt }}</td>
+  <td><code>{{ a.phone }}</code></td>
+  <td>{{ a.pbx_status }}</td>
+  <td>{{ a.sip_code or '—' }}</td>
+  <td>{{ a.answered_seconds or '—' }}</td>
+  <td><code>{{ a.outcome }}</code>{% if a.verified %} ✓{% endif %}</td>
+  <td>{{ 'có' if a.counted else 'không' }}</td>
+</tr>
+{% endfor %}
+{% if not attempts %}<tr><td colspan="7" class="muted">Chưa có cuộc gọi nào</td></tr>{% endif %}
+</tbody>
+</table>
+</div>
+
+<h2>SMS đã gửi ({{ sms|length }})</h2>
+<div class="card">
+{% for m in sms %}
+<p>{{ m.created_at|dt }} → <code>{{ m.phone }}</code>
+  <span class="badge badge-retry">{{ m.template }}</span><br>
+  <span class="sms-body">"{{ m.body }}"</span></p>
+{% else %}
+<p class="muted">Chưa gửi SMS nào.</p>
+{% endfor %}
+</div>
+
+<h2>Outbox - việc chờ hệ thống ngoài xử lý ({{ outbox|length }})</h2>
+<div class="card">
+<table>
+<thead><tr><th>Tạo lúc</th><th>Loại</th><th>Trạng thái</th><th>Payload</th></tr></thead>
+<tbody>
+{% for o in outbox %}
+<tr class="{{ 'subtle' if o.status == 'SENT' else '' }}">
+  <td>{{ o.created_at|dt }}</td>
+  <td><strong>{{ o.event_type }}</strong></td>
+  <td>{{ o.status }}{% if o.tries %} ({{ o.tries }} lần){% endif %}</td>
+  <td>
+    {% for k, v in o.payload_parsed.items() %}
+      <code>{{ k }}</code>: {{ v }}<br>
+    {% endfor %}
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="4" class="muted">Chưa có event ngoài nào.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<h2>Lịch gọi</h2>
+<div class="card">
+<table>
+<thead><tr><th>Tới hạn</th><th>Số</th><th>Trạng thái</th><th>KH hẹn?</th></tr></thead>
+<tbody>
+{% for s in schedule %}
+<tr>
+  <td>{{ s.due_at|dt }}</td>
+  <td><code>{{ s.phone }}</code></td>
+  <td>{{ s.status }}</td>
+  <td>{{ 'có' if s.appointment else 'không' }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+{% endblock %}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Voicebot Callback{% endblock %}</title>
+<style>
+:root {
+  --bg: #f5f6fa; --card: #ffffff; --fg: #1f2328; --muted: #6b7280; --line: #e5e7eb;
+  --ok: #16a34a; --retry: #2563eb; --sys: #9333ea; --appt: #0891b2;
+  --stop: #dc2626; --human: #d97706;
+  --p1: #dc2626; --p2: #d97706; --p3: #0891b2;
+}
+* { box-sizing: border-box; }
+body { font: 15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; margin: 0;
+       background: var(--bg); color: var(--fg); }
+header { background: #1e293b; color: #fff; padding: 14px 24px; }
+header a { color: #fff; text-decoration: none; font-weight: 600; }
+header .path { opacity: .7; font-size: 13px; margin-left: 12px; }
+main { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
+h1 { font-size: 20px; margin: 0 0 16px; }
+h2 { font-size: 16px; margin: 24px 0 10px; color: var(--muted);
+     text-transform: uppercase; letter-spacing: .5px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+        padding: 16px 20px; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line);
+         vertical-align: top; }
+th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+tr:last-child td { border-bottom: 0; }
+tr.row-link:hover { background: #f9fafb; cursor: pointer; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px;
+         font-weight: 600; color: #fff; white-space: nowrap; }
+.badge-ok    { background: var(--ok); }
+.badge-retry { background: var(--retry); }
+.badge-sys   { background: var(--sys); }
+.badge-appt  { background: var(--appt); }
+.badge-stop  { background: var(--stop); }
+.badge-human { background: var(--human); }
+.badge-p1 { background: var(--p1); }
+.badge-p2 { background: var(--p2); }
+.badge-p3 { background: var(--p3); }
+.muted { color: var(--muted); font-size: 13px; }
+.timeline { position: relative; padding-left: 24px; }
+.timeline::before { content: ""; position: absolute; left: 7px; top: 6px; bottom: 6px;
+                    width: 2px; background: var(--line); }
+.step { position: relative; padding: 8px 0 14px; }
+.step::before { content: ""; position: absolute; left: -22px; top: 12px; width: 12px;
+                height: 12px; border-radius: 50%; background: var(--card); border: 2px solid var(--muted); }
+.step.step-ok::before    { border-color: var(--ok); }
+.step.step-retry::before { border-color: var(--retry); }
+.step.step-sys::before   { border-color: var(--sys); }
+.step.step-appt::before  { border-color: var(--appt); }
+.step.step-stop::before  { border-color: var(--stop); }
+.step.step-human::before { border-color: var(--human); }
+.step-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.step-head .time { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 80px; }
+.step-head .kind { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+.step-reason { margin: 4px 0 0; }
+.step-meta { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.step-meta code { background: #f3f4f6; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+.grid { display: grid; grid-template-columns: 180px 1fr; gap: 6px 16px; font-size: 14px; }
+.grid dt { color: var(--muted); }
+.grid dd { margin: 0; }
+.subtle { background: #f9fafb; }
+.sms-body { font-style: italic; color: #374151; }
+details summary { cursor: pointer; color: var(--retry); font-size: 13px; }
+details pre { background: #f3f4f6; padding: 10px; border-radius: 6px; overflow-x: auto;
+              font-size: 12px; }
+</style>
+</head>
+<body>
+<header><a href="/">⟵ Voicebot Callback — Dashboard</a><span class="path">{{ request.path }}</span></header>
+<main>{% block body %}{% endblock %}</main>
+</body>
+</html>
