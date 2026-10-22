@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: cb
+      POSTGRES_DB: callback
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d callback"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    environment:
+      CALLBACK_DB_URL: postgresql://postgres:cb@postgres:5432/callback
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg_data:

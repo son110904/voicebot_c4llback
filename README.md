@@ -14,8 +14,10 @@ voicebot_callback/
 │   ├── pbx.py                # Map call_status/SIP -> Outcome
 │   └── rules.py              # decide / pre_dial_check / merge_alert
 ├── db/                       # Lưu trữ + luồng xử lý
-│   ├── schema.sql            # 7 bảng SQLite
-│   ├── repo.py               # SQL thuần
+│   ├── schema_sqlite.sql     # 7 bảng cho SQLite (dev/demo)
+│   ├── schema_postgres.sql   # 7 bảng cho Postgres (UAT/prod)
+│   ├── driver.py             # Chọn driver theo URL, giấu khác biệt
+│   ├── repo.py               # SQL thuần (chạy chung 2 driver)
 │   └── service.py            # CallbackService ghép rule engine + DB
 ├── llm/                      # Gán nhãn transcript
 │   ├── pii.py                # Che số thẻ / ĐT / CCCD / OTP / số tiền
@@ -36,6 +38,33 @@ python demo_db.py
 ```
 
 Dùng Python 3.10+.
+
+## Chuyển sang Postgres
+
+Mặc định SQLite. Để chạy Postgres, đặt `CALLBACK_DB_URL`:
+
+```bash
+pip install "psycopg[binary]"
+export CALLBACK_DB_URL=postgresql://user:pass@host:5432/dbname
+python seed_demo.py                           # nạp 5 case demo
+python app.py                                  # dashboard dùng PG
+python -m unittest tests.test_postgres -v     # test đại diện trên PG thật
+```
+
+Code chung 1 file `repo.py` cho cả hai; schema tách thành 2 file (SQLite dùng `AUTOINCREMENT`, Postgres dùng `BIGSERIAL`). Mọi placeholder, lastrowid và BEGIN được wrapper `db/driver.py` đổi tự động.
+
+## Docker Compose (cách dễ nhất để demo cho mentor)
+
+Chỉ cần Docker, không cần Python local:
+
+```bash
+docker compose up        # dựng PG + Flask + seed sẵn 5 case
+# mở http://localhost:5000
+docker compose down      # tắt
+docker compose down -v   # tắt + xóa dữ liệu PG
+```
+
+Codespaces tự nhận cổng 5000, click tab PORTS → đổi visibility sang **Public** → copy URL gửi mentor.
 
 ## Dashboard web (demo cho mentor)
 

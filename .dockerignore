@@ -1,0 +1,10 @@
+__pycache__
+*.pyc
+*.db
+*.sqlite
+*.sqlite3
+.venv
+.env
+.git
+.pytest_cache
+diagrams/*.png

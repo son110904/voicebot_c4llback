@@ -1,3 +1,4 @@
 PyYAML>=6.0
-Flask>=3.0    # chỉ cần cho dashboard web demo (app.py)
-openai>=1.0   # chỉ cần khi gọi OpenAI thật; test và demo không dùng
+Flask>=3.0           # chỉ cần cho dashboard web demo (app.py)
+openai>=1.0          # chỉ cần khi gọi OpenAI thật; test và demo không dùng
+psycopg[binary]>=3.1 # chỉ cần khi chạy Postgres; SQLite dùng sqlite3 chuẩn

@@ -1,15 +1,19 @@
 """Dashboard Flask: xem danh sách case và timeline từng quyết định của rule engine.
 
-Đọc DB SQLite đã tạo bởi seed_demo.py (hoặc từ production). Chỉ ĐỌC - không gọi điện, không ghi.
-Chạy: python app.py   -> http://localhost:5000
+Đọc DB (SQLite hoặc Postgres) qua db.driver.connect — URL lấy từ CALLBACK_DB_URL.
+Chỉ ĐỌC - không gọi điện, không ghi.
+
+Chạy: python app.py                                 (SQLite: demo.db)
+      CALLBACK_DB_URL=postgresql://... python app.py (Postgres)
 """
 import json
 import os
-import sqlite3
 
 from flask import Flask, abort, render_template
 
-DB_PATH = os.environ.get("CALLBACK_DB", "demo.db")
+from db import connect as db_connect
+
+DB_URL = os.environ.get("CALLBACK_DB_URL", "sqlite:///demo.db")
 
 GROUP_COLOR = {
     "XONG": "ok",
@@ -34,9 +38,7 @@ app.jinja_env.globals.update(group_color=GROUP_COLOR, action_color=ACTION_COLOR,
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return db_connect(DB_URL)
 
 
 def dt(s):
@@ -52,39 +54,42 @@ app.jinja_env.filters["dt"] = dt
 
 @app.route("/")
 def index():
-    with db() as conn:
-        rows = conn.execute("""
+    conn = db()
+    try:
+        rows = list(conn.execute("""
             SELECT c.*,
                    (SELECT COUNT(*) FROM call_attempts a WHERE a.case_id = c.case_id) AS calls,
                    (SELECT COUNT(*) FROM call_attempts a WHERE a.case_id = c.case_id AND a.counted = 1) AS counted,
                    (SELECT MIN(due_at) FROM schedule s WHERE s.case_id = c.case_id AND s.status = 'PENDING') AS next_at,
                    (SELECT COUNT(*) FROM alerts a WHERE a.case_id = c.case_id) AS alerts
             FROM cases c ORDER BY c.urgency, c.created_at DESC
-        """).fetchall()
-    return render_template("index.html", cases=rows, db_path=DB_PATH)
+        """))
+    finally:
+        conn.close()
+    return render_template("index.html", cases=rows, db_url=DB_URL)
 
 
 @app.route("/case/<case_id>")
 def case(case_id):
-    with db() as conn:
+    conn = db()
+    try:
         c = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
         if c is None:
             abort(404)
-        alerts = conn.execute("SELECT * FROM alerts WHERE case_id = ? ORDER BY received_at",
-                              (case_id,)).fetchall()
-        attempts = conn.execute("SELECT * FROM call_attempts WHERE case_id = ? ORDER BY started_at",
-                                (case_id,)).fetchall()
-        decisions = conn.execute("""
+        alerts = list(conn.execute("SELECT * FROM alerts WHERE case_id = ? ORDER BY received_at", (case_id,)))
+        attempts = list(conn.execute("SELECT * FROM call_attempts WHERE case_id = ? ORDER BY started_at",
+                                     (case_id,)))
+        decisions = list(conn.execute("""
             SELECT d.*, l.label AS llm_label, l.confidence AS llm_conf
             FROM decisions d LEFT JOIN llm_labels l ON l.attempt_id = d.attempt_id
             WHERE d.case_id = ? ORDER BY d.decision_id
-        """, (case_id,)).fetchall()
-        sms = conn.execute("SELECT * FROM sms_log WHERE case_id = ? ORDER BY sms_id",
-                           (case_id,)).fetchall()
-        outbox = conn.execute("SELECT * FROM outbox WHERE case_id = ? ORDER BY event_id",
-                              (case_id,)).fetchall()
-        schedule = conn.execute("SELECT * FROM schedule WHERE case_id = ? ORDER BY schedule_id",
-                                (case_id,)).fetchall()
+        """, (case_id,)))
+        sms = list(conn.execute("SELECT * FROM sms_log WHERE case_id = ? ORDER BY sms_id", (case_id,)))
+        outbox = list(conn.execute("SELECT * FROM outbox WHERE case_id = ? ORDER BY event_id", (case_id,)))
+        schedule = list(conn.execute("SELECT * FROM schedule WHERE case_id = ? ORDER BY schedule_id",
+                                     (case_id,)))
+    finally:
+        conn.close()
 
     decisions = [{**dict(d), "detail_parsed": json.loads(d["detail"])} for d in decisions]
     outbox = [{**dict(o), "payload_parsed": json.loads(o["payload"])} for o in outbox]
@@ -94,7 +99,4 @@ def case(case_id):
 
 
 if __name__ == "__main__":
-    if not os.path.exists(DB_PATH):
-        print(f"Chưa có {DB_PATH}. Chạy trước: python seed_demo.py")
-        raise SystemExit(1)
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
