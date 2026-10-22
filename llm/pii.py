@@ -2,7 +2,7 @@
 
 Dữ liệu KH là của ngân hàng, LLM là bên thứ 3 -> KHÔNG được gửi đi:
 số thẻ, số CMND/CCCD, số TK, OTP/PIN, số điện thoại, email, số tiền giao dịch cụ thể.
-Che bằng token (vd '<CARD>') để LLM vẫn hiểu ngữ cảnh "KH nhắc đến số thẻ".
+Che bằng token (vd '<CARD>') để LLM vẫn hiểu ngữ cảnh.
 """
 from __future__ import annotations
 

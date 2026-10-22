@@ -96,9 +96,21 @@ def _sqlite(path: str) -> Conn:
 
 
 def _postgres(url: str) -> Conn:
+    import time
     import psycopg
     from psycopg.rows import dict_row
-    raw = psycopg.connect(url, autocommit=False, row_factory=dict_row)
+    last = None
+    for i in range(20):
+        try:
+            raw = psycopg.connect(url, autocommit=False, row_factory=dict_row,
+                                  connect_timeout=5)
+            break
+        except (psycopg.OperationalError, psycopg.errors.ConnectionTimeout) as e:
+            last = e
+            time.sleep(1)
+    else:
+        raise RuntimeError(f"Không connect được Postgres sau 20 lần thử: {last}")
+
     with raw.cursor() as cur:
         cur.execute(_PG_SCHEMA.read_text(encoding="utf-8"))
     raw.commit()

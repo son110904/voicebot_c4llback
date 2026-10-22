@@ -1,5 +1,4 @@
-# Campaign rules: QUYẾT ĐỊNH GỌI LẠI CHO KHÁCH HÀNG
-
+# Campaign rules
 utc_offset_hours: 7            # giờ Việt Nam, không có giờ mùa hè
 docs_min_gap_minutes: 10       # docs: các lần gọi cách nhau >= 10 phút -> không mức nào được đặt thấp hơn
 rolling_window_hours: 24       # đếm lượt theo 24h trượt, KHÔNG theo ngày lịch (tránh 23h50 gọi, 0h05 gọi tiếp)
@@ -48,7 +47,6 @@ levels:
     max_appointments: 2
 
 # Khoảng chờ trước khi gọi lại, theo kết quả cuộc gọi.
-# delays[i] dùng cho lần thứ i+1 gặp kết quả đó trong case; hết danh sách thì dùng phần tử cuối.
 # Luôn bị nâng lên tối thiểu min_gap_minutes của mức khẩn (tính từ lần gọi gần nhất có đổ chuông).
 outcomes:
   no_answer:             {delays: [10, 30, 60]}
@@ -64,7 +62,7 @@ outcomes:
   bad_audio:             {delays: [10]}                         # KH đã nghe máy -> vẫn phải đủ 10 phút
 
 sms:
-  max_per_case: 3              # luôn chừa 1 tin cho SMS cuối khi hết lượt
+  max_per_case: 3              
   templates:                   # KHÔNG được chứa chi tiết giao dịch (số tiền, số thẻ, merchant) - code chặn dấu { }
     contact: "VietinBank đang liên hệ để xác thực một giao dịch thẻ. Quý khách vui lòng gọi 1900558868."
     final: "VietinBank chưa liên hệ được Quý khách để xác thực một giao dịch thẻ. Quý khách vui lòng gọi 1900558868 để được hỗ trợ."
