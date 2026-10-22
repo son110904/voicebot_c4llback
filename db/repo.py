@@ -1,8 +1,6 @@
 """Đọc/ghi DB: chỉ có SQL và chuyển đổi kiểu, không có luật nghiệp vụ.
 
-Chạy được trên SQLite (demo/dev) và Postgres (UAT/prod) nhờ wrapper db.driver.Conn:
-   repo.py viết placeholder '?' như SQLite thường; wrapper tự đổi sang '%s' cho Postgres.
-   lastrowid của SQLite ↔ RETURNING id của Postgres gói trong conn.insert().
+Chạy trên Postgres qua wrapper db.driver.Conn (xem driver.py).
 """
 from __future__ import annotations
 
@@ -15,7 +13,7 @@ from typing import Any, Iterable, Iterator
 
 from callback.models import Action, Alert, Attempt, Case, CaseStatus, Decision, Group, Outcome, Urgency
 
-from .driver import Conn, connect  # noqa: F401 (re-export)
+from .driver import Conn
 
 
 class ConcurrentUpdateError(RuntimeError):

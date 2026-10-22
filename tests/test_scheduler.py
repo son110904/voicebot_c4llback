@@ -1,10 +1,18 @@
-"""Test scheduler: nhận lịch, gọi, ghi kết quả, phân phối outbox."""
+"""Test scheduler: nhận lịch, gọi, ghi kết quả, phân phối outbox.
+
+Cần Postgres sẵn, giống test_db. Không có CALLBACK_DB_URL -> skip.
+"""
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 
 from callback import Alert, Outcome, load_config
-from db import CallbackService, LlmLabel, connect
+from db import CallbackService, LlmLabel, connect, reset
 from scheduler import DialResult, Scheduler, SchedulerConfig
+
+URL = os.environ.get("CALLBACK_DB_URL", "")
+if not URL.startswith(("postgres://", "postgresql://")):
+    raise unittest.SkipTest("Cần CALLBACK_DB_URL=postgresql://... để chạy test scheduler")
 
 VN = timezone(timedelta(hours=7))
 PRIMARY = "0900000001"
@@ -37,8 +45,15 @@ class Clock:
         return self.now
 
 
+_CONN = None
+
+
 def new_svc():
-    return CallbackService(connect(), load_config(), config_version="sched-test")
+    global _CONN
+    if _CONN is None:
+        _CONN = connect(URL)
+    reset(_CONN)
+    return CallbackService(_CONN, load_config(), config_version="sched-test")
 
 
 def seed(svc, now, approved=False, blocked=True):

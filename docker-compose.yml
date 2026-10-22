@@ -1,13 +1,12 @@
+# 1 lệnh chạy đủ demo cho mentor: `docker compose up`
+# PG + Flask + 5 case seed sẵn, mở http://localhost:5000
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_PASSWORD: cb
       POSTGRES_DB: callback
-    ports:
-      - "5432:5432"
-    volumes:
-      - pg_data:/var/lib/postgresql/data
+    network_mode: host           # dùng mạng host để tránh vấn đề networking trong Codespaces
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d callback"]
       interval: 2s
@@ -17,12 +16,8 @@ services:
   app:
     build: .
     environment:
-      CALLBACK_DB_URL: postgresql://postgres:cb@postgres:5432/callback
-    ports:
-      - "5000:5000"
+      CALLBACK_DB_URL: postgresql://postgres:cb@127.0.0.1:5432/callback
+    network_mode: host           # app và PG cùng network host -> localhost nối trực tiếp
     depends_on:
       postgres:
         condition: service_healthy
-
-volumes:
-  pg_data:

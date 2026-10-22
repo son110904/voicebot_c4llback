@@ -13,11 +13,10 @@ voicebot_callback/
 │   ├── urgency.py            # Tính P1/P2/P3 từ dữ liệu cảnh báo
 │   ├── pbx.py                # Map call_status/SIP -> Outcome
 │   └── rules.py              # decide / pre_dial_check / merge_alert
-├── db/                       # Lưu trữ + luồng xử lý
-│   ├── schema_sqlite.sql     # 7 bảng cho SQLite (dev/demo)
-│   ├── schema_postgres.sql   # 7 bảng cho Postgres (UAT/prod)
-│   ├── driver.py             # Chọn driver theo URL, giấu khác biệt
-│   ├── repo.py               # SQL thuần (chạy chung 2 driver)
+├── db/                       # Lưu trữ + luồng xử lý (Postgres)
+│   ├── schema_postgres.sql   # 7 bảng
+│   ├── driver.py             # Wrapper psycopg: placeholder, RETURNING, retry
+│   ├── repo.py               # SQL thuần
 │   └── service.py            # CallbackService ghép rule engine + DB
 ├── llm/                      # Gán nhãn transcript
 │   ├── pii.py                # Che số thẻ / ĐT / CCCD / OTP / số tiền
@@ -30,47 +29,26 @@ voicebot_callback/
 
 ## Chạy
 
+Cần Python 3.10+ và một Postgres chạy sẵn (dễ nhất là qua `docker compose`, xem dưới).
+
 ```bash
 pip install -r requirements.txt
-python -m unittest discover -s tests -t . -v
-python demo_rules.py
-python demo_db.py
+export CALLBACK_DB_URL=postgresql://postgres:cb@localhost:5432/callback
+python -m unittest discover -s tests -t . -v   # ~102 test
+python demo_rules.py                             # mô phỏng text, không cần DB
+python seed_demo.py && python app.py             # nạp data + mở dashboard
 ```
 
-Dùng Python 3.10+.
+Test `test_rules.py` và `test_llm.py` không cần DB, chạy luôn.
+Test `test_db.py` và `test_scheduler.py` tự skip nếu không có `CALLBACK_DB_URL`.
 
-## Chuyển sang Postgres
-
-Mặc định SQLite. Để chạy Postgres, đặt `CALLBACK_DB_URL`:
-
-```bash
-pip install "psycopg[binary]"
-export CALLBACK_DB_URL=postgresql://user:pass@host:5432/dbname
-python seed_demo.py                           # nạp 5 case demo
-python app.py                                  # dashboard dùng PG
-python -m unittest tests.test_postgres -v     # test đại diện trên PG thật
-```
-
-Code chung 1 file `repo.py` cho cả hai; schema tách thành 2 file (SQLite dùng `AUTOINCREMENT`, Postgres dùng `BIGSERIAL`). Mọi placeholder, lastrowid và BEGIN được wrapper `db/driver.py` đổi tự động.
-
-## Docker Compose (cách dễ nhất để demo cho mentor)
-
-Chỉ cần Docker, không cần Python local:
+## Docker Compose
 
 ```bash
-docker compose up        # dựng PG + Flask + seed sẵn 5 case
+docker compose up       
 # mở http://localhost:5000
 docker compose down      # tắt
 docker compose down -v   # tắt + xóa dữ liệu PG
-```
-
-Codespaces tự nhận cổng 5000, click tab PORTS → đổi visibility sang **Public** → copy URL gửi mentor.
-
-## Dashboard web (demo cho mentor)
-
-```bash
-python seed_demo.py     # tạo demo.db với 5 case điển hình
-python app.py           # http://localhost:5000
 ```
 
 Trên Codespaces, port 5000 sẽ tự được chuyển ra ngoài - click vào tab PORTS,
@@ -97,9 +75,75 @@ Các điểm chính:
 - SMS KHÔNG được chứa chi tiết giao dịch; config bắt lỗi `{...}` trong mẫu.
 - Cảnh báo trùng gộp vào case đang mở, giữ nguyên số lượt đã gọi, nâng mức khẩn nếu cần.
 - Mỗi `call_id` chỉ ghi 1 lần (idempotent); mỗi case tối đa 1 lịch sống (unique index).
+# Bảng từ ngữ
 
-## Chưa làm (đợt sau)
+| Danh mục | Giá trị | Ý nghĩa |
+|---|---|---|
+| **Mức khẩn** | `P1` | Thẻ còn mở + GD đã cấp phép / ≥50tr / ≥2 cảnh báo. Tối đa 5 cuộc/24h, 24/7, hạn 1 ngày |
+| | `P2` | Thẻ đã bị khóa tự động. Tối đa 3 cuộc/24h, 7h–22h, hạn 2 ngày |
+| | `P3` | GD đã bị từ chối, thẻ chưa khóa. Tối đa 3 cuộc/24h, 8h–21h, hạn 1 ngày |
+| **Trạng thái case** | `OPEN` | Bot đang xử lý |
+| | `DONE` | KH đã xác nhận xong |
+| | `HUMAN` | Đã chuyển ĐTV, bot không đụng nữa |
+| | `STOPPED` | Bot dừng (nhầm số, SIM swap, KH không cho gọi) |
+| | `EXHAUSTED` | Hết lượt, không liên hệ được |
+| | `CLOSED` | Đóng từ bên ngoài (ĐTV xử lý xong hoặc TWO đóng cảnh báo) |
+| **Hành động rule engine** | `DIAL_NOW` | Case còn mở, đủ điều kiện → agent quay số ngay |
+| | `SCHEDULE_CALL` | Hẹn giờ gọi lại (ghi vào bảng schedule) |
+| | `CLOSE` | KH xác nhận chính chủ → đóng case thành công |
+| | `HAND_TO_DTV` | Chuyển ĐTV (nhân viên tổng đài con người) qua hàng đợi |
+| | `STOP` | Bot dừng (có thể kèm chặn số) |
+| | `EXHAUSTED` | Hết lượt, gửi SMS cuối, tạo ticket "không liên hệ được" |
+| **Nhóm kết quả cuộc gọi** | `XONG` | KH xác nhận chính chủ (tính lượt) |
+| | `DỪNG BOT` | Nhầm số, SIM swap, KH từ chối liên hệ |
+| | `NGƯỜI THẬT XỬ LÝ` | Phủ nhận GD, bức xúc, ngoài phạm vi bot, không rõ (tính lượt) |
+| | `GỌI LẠI - LỖI PHÍA KHÁCH` | Không nghe, bận, tắt máy, người nhà, nghi lừa đảo (tính lượt) |
+| | `GỌI LẠI - LỖI PHÍA HỆ THỐNG` | SIP trunk / agent / âm thanh kém (KHÔNG tính lượt) |
+| | `KHÁCH HẸN` | KH xin gọi lại giờ cụ thể (KHÔNG tính lượt) |
+| **Trạng thái tổng đài** | `Completed` | Cuộc gọi hoàn tất bình thường (KH đã nghe xong) |
+| | `No Answer` | Đổ chuông nhưng KH không bắt máy |
+| | `Busy` | Máy KH đang bận |
+| | `Failed` | Không thiết lập được cuộc gọi (lỗi SIP, số không tồn tại) |
+| | `Transferred` | Đã chuyển ĐTV ngay trong cuộc gọi |
+| | `Incomplete` | Rớt giữa chừng trước khi hoàn tất |
+| **Outcome từ tổng đài** | `no_answer` | Đổ chuông không nghe |
+| | `busy` | Máy bận |
+| | `rejected` | KH bấm từ chối cuộc gọi |
+| | `unreachable` | Tắt máy / ngoài vùng phủ sóng |
+| | `invalid_number` | Số không tồn tại |
+| | `voicemail` | Vào hộp thư thoại (không để lại lời nhắn) |
+| | `short_hangup` | Nhấc máy rồi cúp <5 giây / im lặng |
+| | `dropped` | Rớt cuộc gọi trước khi xác thực xong |
+| | `transferred` | Đã chuyển ĐTV trong cuộc gọi |
+| | `system_error` | Lỗi phía mình: SIP trunk, media adapter, agent |
+| | `bad_audio` | Âm thanh kém, bot không nghe được |
+| **Outcome do LLM gán** | `verified_confirmed` | KH xác nhận chính chủ thực hiện GD |
+| | `verified_denied` | KH phủ nhận GD → nghi gian lận thật |
+| | `wrong_number` | Người nghe không phải chủ thẻ |
+| | `relative_answered` | Người nhà nghe máy, hứa chuyển máy |
+| | `callback_requested` | KH hẹn gọi lại |
+| | `verify_failed` | Xác thực danh tính sai nhiều lần → nghi SIM swap |
+| | `angry` | KH bức xúc, phàn nàn |
+| | `do_not_call` | KH yêu cầu không liên hệ nữa |
+| | `other_number_requested` | Người nghe đòi gọi sang số khác |
+| | `scam_suspected_hangup` | KH tưởng lừa đảo nên cúp máy |
+| | `need_human` | KH đòi gặp người thật / bot không hiểu / ngoài phạm vi |
+| | `unclear` | Không xác định được → fallback khi LLM lỗi hoặc confidence thấp |
+| **Trạng thái lịch gọi** | `PENDING` | Đang chờ tới giờ gọi |
+| | `CLAIMED` | 1 worker đã nhận lịch này, đang chuẩn bị quay số |
+| | `DIALING` | Agent đang quay số, chờ kết quả |
+| | `DONE` | Đã hoàn tất (có kết quả rồi) |
+| | `CANCELLED` | Bị hủy (case đóng, hoặc có cảnh báo mới ghi đè) |
+| **Event trong outbox** | `SMS` | Có SMS cần gửi (SMS gateway đọc) |
+| | `DTV_HANDOFF` | Chuyển case cho ĐTV; payload có priority và ticket |
+| | `CASE_FINAL` | Case đã kết thúc; dùng đồng bộ với agent của Đạt / báo cáo |
+| | `OPS_ALERT` | Có vấn đề cần người check (lỗi hệ thống liên tục...) |
+| **Nhân vật & viết tắt** | `ĐTV` | Điện Thoại Viên — nhân viên tổng đài con người |
+| | `TWO/TWFA` | Tranzware — hệ thống phát hiện GD thẻ nghi gian lận |
+| | `PBX` | Tổng đài nội bộ (Freeswitch/Asterisk) |
+| | `SIP trunk` | Đường trung kế SIP nối PBX với telco → KH |
+| | `Phone_SMS` | Số KH đã đăng ký nhận SMS, dùng làm số dự phòng |
+## Chưa làm
 
 - Nối thật với TWO/TWFA, Freeswitch/Asterisk, agent của Đạt.
 - Dashboard theo dõi tình trạng case.
-- Chuyển SQLite -> Postgres khi lên UAT.

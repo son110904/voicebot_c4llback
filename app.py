@@ -13,7 +13,7 @@ from flask import Flask, abort, render_template
 
 from db import connect as db_connect
 
-DB_URL = os.environ.get("CALLBACK_DB_URL", "sqlite:///demo.db")
+DB_URL = os.environ.get("CALLBACK_DB_URL", "postgresql://postgres:cb@localhost:5432/callback")
 
 GROUP_COLOR = {
     "XONG": "ok",

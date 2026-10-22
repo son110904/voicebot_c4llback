@@ -1,14 +1,23 @@
-"""Test DB + luồng xử lý (SQLite trong RAM). Dữ liệu giả.
+"""Test DB + luồng xử lý trên Postgres thật. Dữ liệu giả.
 
-Chạy: python -m unittest discover -s tests -t . -v
+Chạy cần sẵn Postgres và biến môi trường CALLBACK_DB_URL:
+    docker compose up -d postgres
+    export CALLBACK_DB_URL=postgresql://postgres:cb@localhost:5432/callback
+    python -m unittest discover -s tests -t . -v
+Không có URL → các test này skip; test_rules và test_llm vẫn chạy.
 """
 import json
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 
 from callback import Action, Alert, CaseStatus, Outcome, load_config
-from db import CallbackService, ConcurrentUpdateError, LlmLabel, connect
+from db import CallbackService, ConcurrentUpdateError, LlmLabel, connect, reset
 from db import repo
+
+URL = os.environ.get("CALLBACK_DB_URL", "")
+if not URL.startswith(("postgres://", "postgresql://")):
+    raise unittest.SkipTest("Cần CALLBACK_DB_URL=postgresql://... để chạy test DB")
 
 VN = timezone(timedelta(hours=7))
 CFG = load_config()
@@ -31,12 +40,18 @@ def p1_alert(aid="A1", **kw):
 
 
 class Base(unittest.TestCase):
-    def setUp(self):
-        self.conn = connect()
-        self.svc = CallbackService(self.conn, CFG, config_version="test-v1")
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = connect(URL)
 
-    def tearDown(self):
-        self.conn.close()
+    @classmethod
+    def tearDownClass(cls):
+        reset(cls.conn)
+        cls.conn.close()
+
+    def setUp(self):
+        reset(self.conn)
+        self.svc = CallbackService(self.conn, CFG, config_version="test-v1")
 
     def count(self, sql, *args):
         return self.conn.execute(sql, args).fetchone()[0]

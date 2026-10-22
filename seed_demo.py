@@ -1,8 +1,6 @@
-"""Tạo DB demo với 5 kịch bản điển hình để mentor xem trên dashboard.
+"""Tạo DB demo với các kịch bản điển hình để mentor xem trên dashboard.
 
-Dùng DB nào đọc từ biến môi trường CALLBACK_DB_URL:
-    sqlite:///demo.db                                   (mặc định, demo.db)
-    postgresql://postgres:cb@localhost:5432/postgres    (Docker compose)
+Cần Postgres sẵn (docker compose up postgres), đọc URL từ CALLBACK_DB_URL.
 Chạy: python seed_demo.py && python app.py
 """
 import os
@@ -10,13 +8,13 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 from callback import Alert, Outcome, load_config
-from db import CallbackService, LlmLabel, connect
+from db import CallbackService, LlmLabel, connect, reset
 from scheduler import DialResult, Scheduler, SchedulerConfig
 
 VN = timezone(timedelta(hours=7))
 PRIMARY = "0901234567"
 ALT = "0987654321"
-DB_URL = os.environ.get("CALLBACK_DB_URL", "sqlite:///demo.db")
+DB_URL = os.environ.get("CALLBACK_DB_URL", "postgresql://postgres:cb@localhost:5432/callback")
 
 
 def at(day, h, m=0, s=0):
@@ -57,29 +55,11 @@ def run_case(svc, clock, alert_in, dialer):
         s.tick()
 
 
-def _reset(url):
-    """SQLite: xóa file. Postgres: TRUNCATE để chạy lại được."""
-    if url.startswith(("postgres://", "postgresql://")):
-        conn = connect(url)
-        for t in ("outbox", "sms_log", "schedule", "decisions", "llm_labels",
-                  "call_attempts", "alerts", "cases"):
-            try:
-                conn.execute(f"DELETE FROM {t}", ())
-            except Exception:
-                pass
-        conn.commit()
-        conn.close()
-        return
-    path = url[len("sqlite:///"):] if url.startswith("sqlite:///") else url
-    if path and path != ":memory:" and os.path.exists(path):
-        os.remove(path)
-
-
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    _reset(DB_URL)
     cfg = load_config()
     conn = connect(DB_URL)
+    reset(conn)
     svc = CallbackService(conn, cfg, config_version="demo-v1")
 
     # 1. LLM tin cậy thấp, chuyển cho ĐTV, nhãn kỳ vọng unclear
@@ -127,7 +107,7 @@ def main():
                   DialResult("c10c", "Failed", sip_code=503),
                   DialResult("c10d", "Failed", sip_code=503)))
 
-    conn.commit() if DB_URL.startswith(("postgres://", "postgresql://")) else None
+    conn.commit()
     print(f"Đã nạp dữ liệu demo vào {DB_URL}")
     print("Chạy tiếp:  python app.py")
 
