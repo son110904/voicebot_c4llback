@@ -1,0 +1,70 @@
+# Campaign rules: QUYẾT ĐỊNH GỌI LẠI CHO KHÁCH HÀNG
+
+utc_offset_hours: 7            # giờ Việt Nam, không có giờ mùa hè
+docs_min_gap_minutes: 10       # docs: các lần gọi cách nhau >= 10 phút -> không mức nào được đặt thấp hơn
+rolling_window_hours: 24       # đếm lượt theo 24h trượt, KHÔNG theo ngày lịch (tránh 23h50 gọi, 0h05 gọi tiếp)
+per_phone_cap_24h: 5           # tổng số cuộc tới 1 số ĐT trong 24h, cộng mọi case (KH có nhiều cảnh báo)
+llm_min_confidence: 0.7        # nhãn LLM dưới ngưỡng -> coi là 'unclear' -> chuyển ĐTV
+
+alt_phone:                     # số dự phòng = Phone_SMS đã đăng ký với ngân hàng
+  switch_after_failures: 2     # số chính không nghe/tắt máy/hộp thư liên tiếp n lần -> thử Phone_SMS
+  max_attempts: 1              # chỉ thử số dự phòng 1 lần, sau đó quay lại số chính
+
+system_retry:                  # lỗi phía hệ thống (SIP trunk, media adapter, agent...) - KHÔNG tính lượt
+  max_in_a_row: 3              # quá số lần liên tiếp này -> báo động vận hành
+  backoff_minutes: 30          # quá ngưỡng: P2/P3 chờ lâu hơn rồi thử lại; P1 chuyển ĐTV gọi thủ công
+
+appointment:
+  default_minutes: 60          # KH nói "gọi lại sau" mà không nói giờ
+
+urgency:
+  large_amount_vnd: 50000000   # GIẢ ĐỊNH - docs không ghi ngưỡng, cần nghiệp vụ xác nhận
+  multi_alert_count: 2         # >= 2 cảnh báo cho cùng thẻ/KH -> P1
+
+levels:
+  P1:                          # thẻ còn mở + GD được cấp phép / số tiền lớn / nhiều cảnh báo
+    max_calls_24h: 5           # docs: "case khẩn có rule riêng"
+    min_gap_minutes: 10
+    window: "00:00-24:00"      # 24/7 như ĐTV
+    max_days: 1                # quá 1 ngày chưa liên hệ được -> ĐTV
+    sms_after_failures: 1      # gửi SMS ngay sau lần gọi hụt đầu tiên
+    appointment_max_wait_minutes: 30
+    max_appointments: 2
+  P2:                          # thẻ đã bị khóa tự động -> tiền đã an toàn, ít gấp hơn
+    max_calls_24h: 3           # docs: tối đa 3 lần/ngày/case
+    min_gap_minutes: 10
+    window: "07:00-22:00"
+    max_days: 2
+    sms_after_failures: 2
+    appointment_max_wait_minutes: 1440
+    max_appointments: 2
+  P3:                          # GD đã bị từ chối, thẻ chưa khóa -> chưa mất tiền
+    max_calls_24h: 3
+    min_gap_minutes: 30
+    window: "08:00-21:00"
+    max_days: 1
+    sms_after_failures: 2
+    appointment_max_wait_minutes: 1440
+    max_appointments: 2
+
+# Khoảng chờ trước khi gọi lại, theo kết quả cuộc gọi.
+# delays[i] dùng cho lần thứ i+1 gặp kết quả đó trong case; hết danh sách thì dùng phần tử cuối.
+# Luôn bị nâng lên tối thiểu min_gap_minutes của mức khẩn (tính từ lần gọi gần nhất có đổ chuông).
+outcomes:
+  no_answer:             {delays: [10, 30, 60]}
+  busy:                  {delays: [10]}
+  rejected:              {delays: [15], sms_before: true}       # KH bấm từ chối: SMS trước để KH biết là ngân hàng
+  unreachable:           {delays: [30, 60]}                     # tắt máy / ngoài vùng phủ sóng
+  voicemail:             {delays: [10]}                         # KHÔNG để lại lời nhắn có chi tiết giao dịch
+  short_hangup:          {delays: [10]}                         # nhấc máy rồi cúp < 5 giây / im lặng
+  relative_answered:     {delays: [30, 60]}                     # người nhà nghe - số đúng, chờ chủ thẻ về
+  scam_suspected_hangup: {delays: [60], sms_before: true, max_per_case: 1}
+  dropped:               {delays: [10]}                         # rớt trước khi xác thực xong (muốn 1 phút nhưng docs >= 10)
+  system_error:          {delays: [2]}                          # máy KH chưa đổ chuông nên không vướng khoảng 10 phút
+  bad_audio:             {delays: [10]}                         # KH đã nghe máy -> vẫn phải đủ 10 phút
+
+sms:
+  max_per_case: 3              # luôn chừa 1 tin cho SMS cuối khi hết lượt
+  templates:                   # KHÔNG được chứa chi tiết giao dịch (số tiền, số thẻ, merchant) - code chặn dấu { }
+    contact: "VietinBank đang liên hệ để xác thực một giao dịch thẻ. Quý khách vui lòng gọi 1900558868."
+    final: "VietinBank chưa liên hệ được Quý khách để xác thực một giao dịch thẻ. Quý khách vui lòng gọi 1900558868 để được hỗ trợ."
