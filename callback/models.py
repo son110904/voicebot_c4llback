@@ -54,7 +54,10 @@ class Outcome(str, Enum):
     OTHER_NUMBER_REQUESTED = "other_number_requested"  # đòi gọi sang số khác
     SCAM_SUSPECTED_HANGUP = "scam_suspected_hangup"    # KH tưởng lừa đảo nên cúp
     NEED_HUMAN = "need_human"                          # đòi gặp người / bot không hiểu 2 lần / ngoài phạm vi
+    CUSTOMER_UNSURE = "customer_unsure"                # KH không chắc chắn sau 1 lần hỏi lại -> ĐTV (docs case 5)
     UNCLEAR = "unclear"                                # không xác định được (hoặc LLM không chắc)
+    # --- bot/scheduler báo (không phải LLM) khi thao tác hệ thống thất bại
+    ACTION_FAILED = "action_failed"                    # khóa thẻ / ghi kết quả vào core bank fail -> ĐTV HIGH (docs case 7)
 
 
 # Nhãn chỉ LLM mới gán được -> áp ngưỡng độ tin cậy
@@ -62,7 +65,7 @@ LLM_OUTCOMES = frozenset({
     Outcome.VERIFIED_CONFIRMED, Outcome.VERIFIED_DENIED, Outcome.WRONG_NUMBER,
     Outcome.RELATIVE_ANSWERED, Outcome.CALLBACK_REQUESTED, Outcome.VERIFY_FAILED,
     Outcome.ANGRY, Outcome.DO_NOT_CALL, Outcome.OTHER_NUMBER_REQUESTED,
-    Outcome.SCAM_SUSPECTED_HANGUP, Outcome.NEED_HUMAN,
+    Outcome.SCAM_SUSPECTED_HANGUP, Outcome.NEED_HUMAN, Outcome.CUSTOMER_UNSURE,
 })
 
 
@@ -82,6 +85,8 @@ OUTCOME_GROUP: dict[Outcome, tuple[Group, bool]] = {
     Outcome.VERIFIED_DENIED: (Group.HUMAN, True),
     Outcome.NEED_HUMAN: (Group.HUMAN, True),
     Outcome.ANGRY: (Group.HUMAN, True),
+    Outcome.CUSTOMER_UNSURE: (Group.HUMAN, True),
+    Outcome.ACTION_FAILED: (Group.HUMAN, True),
     Outcome.UNCLEAR: (Group.HUMAN, True),
     Outcome.WRONG_NUMBER: (Group.STOP, True),
     Outcome.INVALID_NUMBER: (Group.STOP, False),
@@ -162,6 +167,11 @@ class Event:
     verified: bool = False                 # đã xác thực/xác nhận xong trước khi rớt chưa
     callback_at: datetime | None = None    # giờ KH hẹn (LLM tách từ câu nói)
     llm_confidence: float | None = None
+    # context cho ĐTV khi chuyển máy (docs: screen-pop)
+    transcript: str | None = None                  # transcript gốc (đã che PII trước khi lưu)
+    transcript_summary: str | None = None          # tóm tắt do bot/LLM sinh
+    recording_id: str | None = None                # mã bản ghi âm trên tổng đài
+    misunderstanding_count: int = 0                # số lần bot phải hỏi lại trong cuộc này
 
 
 @dataclass(frozen=True)

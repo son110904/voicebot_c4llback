@@ -37,18 +37,23 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 
 CREATE TABLE IF NOT EXISTS call_attempts (
-    attempt_id       BIGSERIAL PRIMARY KEY,
-    call_id          TEXT NOT NULL UNIQUE,
-    case_id          TEXT NOT NULL REFERENCES cases (case_id),
-    phone            TEXT NOT NULL,
-    started_at       TEXT NOT NULL,
-    ended_at         TEXT NOT NULL,
-    pbx_status       TEXT NOT NULL,
-    sip_code         INTEGER,
-    answered_seconds DOUBLE PRECISION,
-    verified         SMALLINT NOT NULL DEFAULT 0,
-    outcome          TEXT NOT NULL,
-    counted          SMALLINT NOT NULL
+    attempt_id             BIGSERIAL PRIMARY KEY,
+    call_id                TEXT NOT NULL UNIQUE,
+    case_id                TEXT NOT NULL REFERENCES cases (case_id),
+    phone                  TEXT NOT NULL,
+    started_at             TEXT NOT NULL,
+    ended_at               TEXT NOT NULL,
+    pbx_status             TEXT NOT NULL,
+    sip_code               INTEGER,
+    answered_seconds       DOUBLE PRECISION,
+    verified               SMALLINT NOT NULL DEFAULT 0,
+    outcome                TEXT NOT NULL,
+    counted                SMALLINT NOT NULL,
+    -- Context cho ĐTV khi chuyển máy (docs: handoff screen-pop)
+    transcript             TEXT,
+    transcript_summary     TEXT,
+    recording_id           TEXT,
+    misunderstanding_count INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_attempts_case ON call_attempts (case_id, started_at);
 CREATE INDEX IF NOT EXISTS ix_attempts_phone ON call_attempts (phone, started_at);

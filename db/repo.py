@@ -124,12 +124,16 @@ def attempt_by_call_id(conn: Conn, call_id: str):
 
 
 def insert_attempt(conn: Conn, case_id: str, call_id: str, a: Attempt, *, ended_at: datetime, pbx_status: str,
-                   sip_code: int | None, answered_seconds: float | None, verified: bool) -> int:
+                   sip_code: int | None, answered_seconds: float | None, verified: bool,
+                   transcript: str | None = None, transcript_summary: str | None = None,
+                   recording_id: str | None = None, misunderstanding_count: int = 0) -> int:
     return conn.insert(
         "INSERT INTO call_attempts (call_id, case_id, phone, started_at, ended_at, pbx_status, "
-        f"sip_code, answered_seconds, verified, outcome, counted) VALUES ({_marks(11)})",
+        "sip_code, answered_seconds, verified, outcome, counted, "
+        f"transcript, transcript_summary, recording_id, misunderstanding_count) VALUES ({_marks(15)})",
         (call_id, case_id, a.phone, ts(a.started_at), ts(ended_at), pbx_status, sip_code,
-         answered_seconds, int(verified), a.outcome.value, int(a.counted)),
+         answered_seconds, int(verified), a.outcome.value, int(a.counted),
+         transcript, transcript_summary, recording_id, int(misunderstanding_count)),
         pk="attempt_id",
     )
 

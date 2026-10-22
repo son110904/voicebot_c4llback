@@ -237,6 +237,19 @@ class StopAndHumanTest(unittest.TestCase):
         d = run(make_case(), [], O.TRANSFERRED, at(21, 9))
         self.assertEqual(d.rule_id, "H0")
 
+    def test_customer_unsure_goes_to_dtv(self):
+        d = run(make_case(), [], O.CUSTOMER_UNSURE, at(21, 9), llm_confidence=0.85)
+        self.assertEqual(d.action, Action.HAND_TO_DTV)
+        self.assertEqual(d.rule_id, "H5")
+        self.assertTrue(d.counts_attempt)
+
+    def test_action_failed_goes_to_dtv_high_always(self):
+        # P3 bình thường ĐTV NORMAL, nhưng ACTION_FAILED thì HIGH
+        d = run(make_case(Urgency.P3), [], O.ACTION_FAILED, at(21, 9))
+        self.assertEqual(d.action, Action.HAND_TO_DTV)
+        self.assertEqual(d.rule_id, "H6")
+        self.assertEqual(d.dtv_priority, "HIGH")
+
 
 class AppointmentTest(unittest.TestCase):
     def test_callback_at_customer_time_not_counted(self):

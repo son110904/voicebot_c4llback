@@ -48,6 +48,8 @@ _HUMAN = {
     Outcome.NEED_HUMAN: ("H2", "KH muốn gặp người thật / bot không hiểu 2 lần / ngoài phạm vi bot"),
     Outcome.ANGRY: ("H3", "KH bức xúc/phàn nàn -> bot không gọi lại"),
     Outcome.UNCLEAR: ("H4", "Không xác định được kết quả cuộc gọi -> ĐTV nghe lại ghi âm"),
+    Outcome.CUSTOMER_UNSURE: ("H5", "KH không chắc chắn sau 1 lần hỏi lại -> ĐTV xác nhận lại giao dịch"),
+    Outcome.ACTION_FAILED: ("H6", "Thao tác hệ thống thất bại (khóa thẻ/ghi kết quả core) -> ĐTV xử lý thủ công"),
 }
 
 _STATUS_AFTER = {
@@ -190,7 +192,7 @@ def _human(ctx: _Ctx) -> Decision:
         text += (f" (LLM gán '{ev.outcome.value}' nhưng độ tin cậy {ev.llm_confidence:.2f}"
                  f" < {ctx.cfg.llm_min_confidence})")
     # docs: không có ĐTV rảnh -> đưa vào hàng đợi gọi lại ưu tiên
-    prio = "HIGH" if o is Outcome.VERIFIED_DENIED else _prio(ctx)
+    prio = "HIGH" if o in (Outcome.VERIFIED_DENIED, Outcome.ACTION_FAILED) else _prio(ctx)
     return Decision(Action.HAND_TO_DTV, rid, text + " -> hàng đợi ĐTV", dtv_priority=prio, ticket="CHUYEN_DTV")
 
 

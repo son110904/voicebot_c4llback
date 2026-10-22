@@ -130,8 +130,16 @@ class CallbackService:
     def record_call_result(self, case_id: str, call_id: str, phone: str, started_at: datetime, now: datetime,
                            pbx_status: str, *, sip_code: int | None = None, answered_seconds: float | None = None,
                            machine_detected: bool = False, verified: bool = False,
-                           llm: LlmLabel | None = None) -> CallResult:
-        """Ghi kết quả cuộc gọi + quyết định bước tiếp. Cùng call_id gửi lại -> trả quyết định cũ, không ghi gì."""
+                           llm: LlmLabel | None = None,
+                           transcript: str | None = None, transcript_summary: str | None = None,
+                           recording_id: str | None = None, misunderstanding_count: int = 0,
+                           action_failed: bool = False) -> CallResult:
+        """Ghi kết quả cuộc gọi + quyết định bước tiếp. Cùng call_id gửi lại -> trả quyết định cũ, không ghi gì.
+
+        `action_failed=True`: bot đã cố khóa thẻ / ghi kết quả vào core bank mà fail
+                              -> ép outcome ACTION_FAILED để chuyển ĐTV HIGH (docs case 7).
+        `transcript`/`recording_id`/`misunderstanding_count` dùng cho screen-pop ĐTV.
+        """
         with repo.transaction(self.conn) as c:
             prev = repo.attempt_by_call_id(c, call_id)
             if prev is not None:
@@ -142,25 +150,73 @@ class CallbackService:
             case, version = got
             attempts = repo.list_attempts(c, case_id, self.tz)
 
-            # nhãn LLM (cuộc có hội thoại) ưu tiên hơn trạng thái tổng đài
-            outcome = llm.label if llm else outcome_from_pbx(pbx_status, sip_code, answered_seconds, machine_detected)
-            if outcome is None:  # có hội thoại nhưng không có nhãn LLM -> không đoán, để ĐTV xem
-                outcome = Outcome.UNCLEAR
+            # action_failed thắng mọi outcome khác (bot thực hiện xong nhưng hậu kiểm lỗi)
+            if action_failed:
+                outcome = Outcome.ACTION_FAILED
+            else:
+                # nhãn LLM (cuộc có hội thoại) ưu tiên hơn trạng thái tổng đài
+                outcome = llm.label if llm else outcome_from_pbx(pbx_status, sip_code, answered_seconds,
+                                                                 machine_detected)
+                if outcome is None:  # có hội thoại nhưng không có nhãn LLM -> không đoán, để ĐTV xem
+                    outcome = Outcome.UNCLEAR
             event = Event(started_at=started_at, phone=phone, outcome=outcome, verified=verified,
                           callback_at=llm.callback_at if llm else None,
-                          llm_confidence=llm.confidence if llm else None)
+                          llm_confidence=llm.confidence if llm else None,
+                          transcript=transcript, transcript_summary=transcript_summary,
+                          recording_id=recording_id, misunderstanding_count=misunderstanding_count)
             d = decide(case, attempts, event, now, self.cfg, self._phone_history(c, case, now))
 
             used = d.outcome or outcome  # d.outcome trống khi case đã đóng (G1)
             counted = d.counts_attempt if d.group else OUTCOME_GROUP[used][1]
-            attempt_id = repo.insert_attempt(c, case_id, call_id, Attempt(started_at, phone, used, counted), ended_at=now, pbx_status=pbx_status,
-                                             sip_code=sip_code, answered_seconds=answered_seconds, verified=verified)
+            attempt_id = repo.insert_attempt(
+                c, case_id, call_id, Attempt(started_at, phone, used, counted), ended_at=now,
+                pbx_status=pbx_status, sip_code=sip_code, answered_seconds=answered_seconds,
+                verified=verified, transcript=transcript, transcript_summary=transcript_summary,
+                recording_id=recording_id, misunderstanding_count=misunderstanding_count,
+            )
             if llm:
                 repo.insert_llm_label(c, attempt_id, llm.label, llm.confidence, llm.callback_at, llm.model,
                                       llm.prompt_version, llm.raw_output, now)
             repo.finish_dialing(c, case_id, now)
-            self._apply(c, case, version, d, "after_call", attempt_id, now)
+
+            # context đầy đủ cho ĐTV khi chuyển máy (docs: screen-pop)
+            handoff = None
+            if d.action is Action.HAND_TO_DTV or d.dtv_priority:
+                handoff = self._handoff_context(case, d, event, used, now, phone)
+            self._apply(c, case, version, d, "after_call", attempt_id, now, handoff_context=handoff)
             return CallResult(d, duplicate=False)
+
+    def _handoff_context(self, case: Case, d: Decision, event: Event, used_outcome: Outcome,
+                         now: datetime, phone: str) -> dict:
+        """8 trường docs yêu cầu khi chuyển ĐTV (section Context Handoff)."""
+        answer = None
+        if used_outcome is Outcome.VERIFIED_CONFIRMED:
+            answer = "KH xác nhận chính chủ"
+        elif used_outcome is Outcome.VERIFIED_DENIED:
+            answer = "KH phủ nhận giao dịch"
+        return {
+            # định danh / phân loại
+            "case_id": case.case_id, "customer_id": case.customer_id, "card_ref": case.card_ref,
+            "phone": phone, "urgency": case.urgency.value,
+            # trạng thái / biện pháp bảo vệ thẻ
+            "card_open": case.card_open, "blocked_phones": sorted(case.blocked_phones),
+            "do_not_call": case.do_not_call,
+            # kết quả xác thực + câu trả lời
+            "identity_verified": event.verified,
+            "transaction_answer": answer,
+            "outcome": used_outcome.value,
+            # phục vụ ĐTV đọc nhanh
+            "misunderstanding_count": event.misunderstanding_count,
+            "transcript": event.transcript,
+            "transcript_summary": event.transcript_summary,
+            "recording_id": event.recording_id,
+            # thời điểm
+            "call_started_at": repo.ts(event.started_at),
+            "handoff_at": repo.ts(now),
+            # routing
+            "priority": d.dtv_priority or "NORMAL", "ticket": d.ticket,
+            "rule_id": d.rule_id, "reason": d.reason,
+        }
 
     def recover_lost_calls(self, now: datetime) -> list[CallResult]:
         """Cuộc đã quay (DIALING) quá dial_timeout chưa có kết quả -> ghi là lỗi hệ thống để còn gọi lại."""
@@ -204,7 +260,7 @@ class CallbackService:
         return repo.phone_history(c, phones, case.case_id, now - self.cfg.rolling_window, self.tz)
 
     def _apply(self, c, case: Case, version: int, d: Decision, kind: str, attempt_id: int | None,
-               now: datetime, reschedule: bool = True) -> int:
+               now: datetime, reschedule: bool = True, handoff_context: dict | None = None) -> int:
         """Ghi hệ quả của 1 quyết định: case, log quyết định, lịch, SMS, outbox."""
         new = apply_decision(case, d)
         repo.update_case(c, new, version, now)
@@ -222,9 +278,13 @@ class CallbackService:
             repo.insert_outbox(c, case.case_id, did, "SMS", {"to": d.sms_to, "template": d.sms_template,
                                                               "body": body}, now)
         if d.action is Action.HAND_TO_DTV or d.dtv_priority:
-            repo.insert_outbox(c, case.case_id, did, "DTV_HANDOFF",
-                               {"priority": d.dtv_priority or "NORMAL", "ticket": d.ticket,
-                                "rule_id": d.rule_id, "reason": d.reason}, now)
+            payload = handoff_context or {
+                "case_id": case.case_id, "customer_id": case.customer_id, "card_ref": case.card_ref,
+                "urgency": case.urgency.value, "card_open": case.card_open,
+                "priority": d.dtv_priority or "NORMAL", "ticket": d.ticket,
+                "rule_id": d.rule_id, "reason": d.reason, "handoff_at": repo.ts(now),
+            }
+            repo.insert_outbox(c, case.case_id, did, "DTV_HANDOFF", payload, now)
         if d.ops_alert:
             repo.insert_outbox(c, case.case_id, did, "OPS_ALERT", {"message": d.ops_alert}, now)
         if case.status is CaseStatus.OPEN and new.status is not CaseStatus.OPEN:
