@@ -1,6 +1,6 @@
 # voicebot_callback
 
-Bộ **campaign rules + DB + LLM labeler + scheduler** cho voicebot xác thực giao dịch thẻ nghi gian lận (VietinBank). Chỉ tập trung vào **quyết định gọi lại khách hàng**; không gọi điện thật.
+Bộ campaign rules + DB + LLM labeler + scheduler cho voicebot xác thực giao dịch thẻ nghi gian lận
 
 ## Cấu trúc
 
@@ -36,34 +36,6 @@ python demo_db.py
 ```
 
 Dùng Python 3.10+.
-
-## Tích hợp
-
-```python
-from datetime import datetime, timezone
-from callback import Alert, load_config
-from db import CallbackService, LlmLabel, connect
-
-cfg = load_config()
-svc = CallbackService(connect("callback.db"), cfg, config_version="prod-v1")
-
-# 1. Nhận cảnh báo từ TWO/TWFA
-svc.ingest_alert(Alert(...), phone="0912...", now=datetime.now(timezone.utc), phone_sms="0987...")
-
-# 2. Worker tick (xem scheduler.py để tích hợp với tổng đài thật)
-from scheduler import Scheduler, SchedulerConfig
-Scheduler(svc, dialer=my_dialer, dispatcher=my_outbox_sender).run_forever()
-```
-
-### Nối LLM thật
-
-```python
-from llm import LlmLabeler, OpenAIClient
-from llm.labeler import LabelerConfig
-labeler = LlmLabeler(OpenAIClient(LabelerConfig(model="gpt-4o-mini")), tz=cfg.tz)
-label = labeler.label(transcript)      # LlmLabel; lỗi/thấp confidence -> UNCLEAR
-svc.record_call_result(..., llm=label)
-```
 
 ### Dialer tích hợp Freeswitch/Asterisk
 
