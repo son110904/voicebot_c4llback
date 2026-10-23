@@ -1,31 +1,65 @@
 {% extends "base.html" %}
 {% block title %}Danh sách case{% endblock %}
 {% block body %}
-<h1>Case voicebot đang theo dõi</h1>
-<p class="muted">Nguồn: <code>{{ db_url }}</code>. {{ cases|length }} case.</p>
 
-<div class="card">
+{# Tính stats cho các thẻ số đầu trang #}
+{% set open_cnt = cases|selectattr('status', 'equalto', 'OPEN')|list|length %}
+{% set done_cnt = cases|selectattr('status', 'equalto', 'DONE')|list|length %}
+{% set human_cnt = cases|selectattr('status', 'equalto', 'HUMAN')|list|length %}
+{% set stop_cnt = cases|rejectattr('status', 'in', ['OPEN', 'DONE', 'HUMAN'])|list|length %}
+
+<h1>Case voicebot đang theo dõi</h1>
+<p class="muted">Nguồn: <code>{{ db_url }}</code></p>
+
+<div class="stats">
+  <div class="stat stat-total"><div class="label">Tổng case</div><div class="value">{{ cases|length }}</div></div>
+  <div class="stat stat-retry"><div class="label">Đang xử lý</div><div class="value">{{ open_cnt }}</div></div>
+  <div class="stat stat-ok"><div class="label">KH xác nhận</div><div class="value">{{ done_cnt }}</div></div>
+  <div class="stat stat-human"><div class="label">Chuyển ĐTV</div><div class="value">{{ human_cnt }}</div></div>
+  <div class="stat stat-stop"><div class="label">Dừng/Hết lượt</div><div class="value">{{ stop_cnt }}</div></div>
+</div>
+
+<div class="filters">
+  <a href="?" class="filter {% if not request.args.get('status') %}active{% endif %}">Tất cả</a>
+  <a href="?status=OPEN" class="filter {% if request.args.get('status') == 'OPEN' %}active{% endif %}">Đang xử lý</a>
+  <a href="?status=DONE" class="filter {% if request.args.get('status') == 'DONE' %}active{% endif %}">Xong</a>
+  <a href="?status=HUMAN" class="filter {% if request.args.get('status') == 'HUMAN' %}active{% endif %}">ĐTV</a>
+  <a href="?status=STOPPED" class="filter {% if request.args.get('status') == 'STOPPED' %}active{% endif %}">Dừng</a>
+  <a href="?status=EXHAUSTED" class="filter {% if request.args.get('status') == 'EXHAUSTED' %}active{% endif %}">Hết lượt</a>
+</div>
+
+<div class="card" style="padding: 0;">
 <table>
 <thead><tr>
 <th>Case</th><th>Mức</th><th>Trạng thái</th><th>Thẻ / KH</th>
-<th>Cảnh báo</th><th>Đã gọi</th><th>SMS</th><th>Gọi tiếp</th>
+<th>Cảnh báo</th><th>Số cuộc đã tính</th><th>SMS</th><th>Gọi tiếp</th>
 </tr></thead>
 <tbody>
 {% for c in cases %}
+{% if not request.args.get('status') or request.args.get('status') == c.status %}
+{% set max_calls = {'P1': 5, 'P2': 3, 'P3': 3}[c.urgency] %}
+{% set pct = (c.counted / max_calls * 100) if max_calls else 0 %}
 <tr class="row-link" onclick="location.href='/case/{{ c.case_id }}'">
   <td><strong>{{ c.case_id }}</strong></td>
   <td><span class="badge badge-{{ c.urgency|lower }}">{{ c.urgency }}</span></td>
   <td><span class="badge badge-{{ status_color[c.status] }}">{{ c.status }}</span></td>
   <td>{{ c.card_ref }}<br><span class="muted">{{ c.customer_id }}</span></td>
-  <td>{{ c.alerts }}{% if c.alert_count > 1 %} <span class="muted">(gộp {{ c.alert_count }})</span>{% endif %}</td>
-  <td>{{ c.calls }} <span class="muted">(tính lượt: {{ c.counted }})</span></td>
+  <td>{{ c.alerts }}{% if c.alert_count > 1 %} <span class="badge badge-sm badge-retry">gộp {{ c.alert_count }}</span>{% endif %}</td>
+  <td>
+    <div class="progress" title="{{ c.counted }}/{{ max_calls }} lượt {{ c.urgency }}">
+      <div class="bar {% if c.counted >= max_calls %}full{% endif %}" style="width: {{ [pct, 100]|min }}%"></div>
+    </div>
+    {{ c.counted }}/{{ max_calls }}
+    {% if c.calls > c.counted %}<span class="muted">(+{{ c.calls - c.counted }} không tính)</span>{% endif %}
+  </td>
   <td>{{ c.sms_sent }}</td>
   <td>{% if c.next_at %}{{ c.next_at|dt }}{% else %}<span class="muted">—</span>{% endif %}</td>
 </tr>
+{% endif %}
 {% endfor %}
 </tbody>
 </table>
 </div>
 
-<p class="muted">Click 1 dòng để xem timeline chi tiết của case đó.</p>
+<p class="muted" style="margin-top: 12px;">Click vào 1 dòng để xem timeline chi tiết các quyết định của rule engine.</p>
 {% endblock %}
