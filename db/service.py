@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from callback import (
-    OUTCOME_GROUP, Action, Alert, Attempt, Case, CaseStatus, Config, Decision, Event, Outcome,
+    OUTCOME_GROUP, Action, Alert, Attempt, Case, CaseStatus, Config, Decision, Event, Outcome, Urgency,
     apply_decision, compute_urgency, decide, merge_alert, outcome_from_pbx, pre_dial_check,
 )
 
