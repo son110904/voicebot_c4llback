@@ -52,12 +52,12 @@ def _marks(n: int) -> str:
 # ------------------------------------------------------------------ cases
 
 _CASE_COLS = ("case_id", "card_ref", "customer_id", "phone", "phone_sms", "urgency", "status", "card_open",
-              "alert_count", "sms_sent", "appointments", "do_not_call", "blocked_phones", "created_at")
+              "alert_count", "zns_sent", "appointments", "do_not_call", "blocked_phones", "created_at")
 
 
 def _case_values(c: Case) -> tuple:
     return (c.case_id, c.card_ref, c.customer_id, c.phone, c.phone_sms, c.urgency.value, c.status.value,
-            int(c.card_open), c.alert_count, c.sms_sent, c.appointments, int(c.do_not_call),
+            int(c.card_open), c.alert_count, c.zns_sent, c.appointments, int(c.do_not_call),
             json.dumps(sorted(c.blocked_phones)), ts(c.created_at))
 
 
@@ -75,7 +75,7 @@ def get_case(conn: Conn, case_id: str, tz: tzinfo) -> tuple[Case, int] | None:
         case_id=r["case_id"], card_ref=r["card_ref"], customer_id=r["customer_id"], phone=r["phone"],
         created_at=from_ts(r["created_at"], tz), urgency=Urgency(r["urgency"]), phone_sms=r["phone_sms"],
         status=CaseStatus(r["status"]), card_open=bool(r["card_open"]), alert_count=r["alert_count"],
-        sms_sent=r["sms_sent"], appointments=r["appointments"], do_not_call=bool(r["do_not_call"]),
+        zns_sent=r["zns_sent"], appointments=r["appointments"], do_not_call=bool(r["do_not_call"]),
         blocked_phones=frozenset(json.loads(r["blocked_phones"])),
     )
     return case, r["version"]
@@ -275,11 +275,11 @@ def next_due(conn: Conn) -> str | None:
     return r["t"]
 
 
-# ------------------------------------------------------------------ sms_log / outbox
+# sms_log / outbox
 
-def insert_sms(conn: Conn, case_id: str, decision_id: int, phone: str, template: str, body: str,
+def insert_zns(conn: Conn, case_id: str, decision_id: int, phone: str, template: str, body: str,
                now: datetime) -> None:
-    conn.execute(f"INSERT INTO sms_log (case_id, decision_id, phone, template, body, created_at) "
+    conn.execute(f"INSERT INTO zns_log (case_id, decision_id, phone, template, body, created_at) "
                  f"VALUES ({_marks(6)})", (case_id, decision_id, phone, template, body, ts(now)))
 
 

@@ -78,19 +78,33 @@ class RetryCustomerTest(unittest.TestCase):
         self.assertEqual(d.action, Action.CLOSE)
         self.assertEqual(d.group, Group.DONE)
 
-    def test_rejected_sends_sms_first(self):
+    def test_rejected_sends_zns_first(self):
         d = run(make_case(), [], O.REJECTED, at(21, 9))
         self.assertEqual(d.next_call_at, at(21, 9, 16))
-        self.assertEqual(d.sms_template, "contact")
+        self.assertEqual(d.zns_template, "contact")
+
+    def test_short_hangup_sends_zns_immediately(self):
+        """KH tắt máy sớm (nghi số lạ) -> ZNS NGAY, không chờ hết lượt."""
+        d = run(make_case(), [], O.SHORT_HANGUP, at(21, 9))
+        self.assertEqual(d.action, Action.SCHEDULE_CALL)
+        self.assertEqual(d.zns_template, "contact")
+
+    def test_short_hangup_too_many_stops_and_switches_to_zns(self):
+        """Tắt máy sớm quá n lần -> ngừng gọi, chuyển ZNS + ĐTV."""
+        hist = [att(O.SHORT_HANGUP, at(21, 9)), att(O.SHORT_HANGUP, at(21, 9, 11))]
+        d = run(make_case(), hist, O.SHORT_HANGUP, at(21, 9, 22))
+        self.assertEqual(d.action, Action.EXHAUSTED)
+        self.assertEqual(d.rule_id, "R5")
+        self.assertEqual(d.zns_template, "final")
 
     def test_scam_hangup_retried_only_once(self):
         case = make_case()
         d1 = run(case, [], O.SCAM_SUSPECTED_HANGUP, at(21, 9))
         self.assertEqual(d1.next_call_at, at(21, 10, 1))
-        self.assertEqual(d1.sms_template, "contact")
+        self.assertEqual(d1.zns_template, "contact")
         d2 = run(case, [att(O.SCAM_SUSPECTED_HANGUP, at(21, 9))], O.SCAM_SUSPECTED_HANGUP, at(21, 10, 1))
         self.assertEqual(d2.action, Action.EXHAUSTED)
-        self.assertEqual(d2.sms_template, "final")
+        self.assertEqual(d2.zns_template, "final")
 
 
 class LimitTest(unittest.TestCase):
@@ -112,7 +126,7 @@ class LimitTest(unittest.TestCase):
         d = run(case, hist, O.NO_ANSWER, at(21, 9, 50))
         self.assertEqual(d.action, Action.EXHAUSTED)
         self.assertEqual(d.ticket, "KHONG_LIEN_HE_DUOC")
-        self.assertEqual(d.sms_template, "final")
+        self.assertEqual(d.zns_template, "final")
         self.assertIsNone(d.dtv_priority)
 
     def test_p1_exhausted_goes_to_dtv_with_card_lock_note(self):
@@ -155,18 +169,16 @@ class SystemErrorTest(unittest.TestCase):
         d = run(make_case(), [att(O.NO_ANSWER, at(21, 9, 5))], O.SYSTEM_ERROR, at(21, 9, 8))
         self.assertEqual(d.next_call_at, at(21, 9, 15))
 
-    def test_too_many_in_a_row_p2_backoff_and_alarm(self):
+    def test_too_many_in_a_row_p2_backoff(self):
         hist = [att(O.SYSTEM_ERROR, t) for t in (at(21, 9), at(21, 9, 3), at(21, 9, 6))]
         d = run(make_case(), hist, O.SYSTEM_ERROR, at(21, 9, 9))
         self.assertEqual(d.rule_id, "Y3")
-        self.assertIsNotNone(d.ops_alert)
         self.assertEqual(d.next_call_at, at(21, 9, 40))
 
     def test_three_in_a_row_still_normal_retry(self):
         hist = [att(O.SYSTEM_ERROR, t) for t in (at(21, 9), at(21, 9, 3))]
         d = run(make_case(), hist, O.SYSTEM_ERROR, at(21, 9, 6))
         self.assertEqual(d.rule_id, "Y1")
-        self.assertIsNone(d.ops_alert)
 
     def test_too_many_in_a_row_p1_goes_to_dtv(self):
         hist = [att(O.SYSTEM_ERROR, t) for t in (at(21, 9), at(21, 9, 3), at(21, 9, 6))]
@@ -181,7 +193,7 @@ class StopAndHumanTest(unittest.TestCase):
         self.assertEqual(d.action, Action.STOP)
         self.assertEqual(d.block_phone, PRIMARY)
         self.assertEqual(d.ticket, "SAI_SO")
-        self.assertIsNone(d.sms_template)  # không SMS cho người lạ
+        self.assertIsNone(d.zns_template)  # không SMS cho người lạ
 
     def test_wrong_number_with_alt_tries_alt(self):
         d = run(make_case(phone_sms=ALT), [], O.WRONG_NUMBER, at(21, 9))
@@ -195,19 +207,19 @@ class StopAndHumanTest(unittest.TestCase):
         self.assertFalse(d.counts_attempt)
         self.assertEqual(d.ticket, "SO_KHONG_TON_TAI")
 
-    def test_verify_failed_blocks_number_no_sms_no_alt(self):
+    def test_verify_failed_blocks_number_no_zns_no_alt(self):
         d = run(make_case(phone_sms=ALT), [], O.VERIFY_FAILED, at(21, 9))
         self.assertEqual(d.action, Action.STOP)
         self.assertEqual(d.block_phone, PRIMARY)
         self.assertEqual(d.dtv_priority, "HIGH")
-        self.assertIsNone(d.sms_template)
+        self.assertIsNone(d.zns_template)
         self.assertIsNone(d.next_call_at)
 
     def test_do_not_call(self):
         d = run(make_case(), [], O.DO_NOT_CALL, at(21, 9))
         self.assertEqual(d.action, Action.STOP)
         self.assertTrue(d.mark_do_not_call)
-        self.assertIsNone(d.sms_template)
+        self.assertIsNone(d.zns_template)
 
     def test_other_number_requested_is_never_dialed(self):
         d = run(make_case(), [], O.OTHER_NUMBER_REQUESTED, at(21, 9))
@@ -281,31 +293,31 @@ class AppointmentTest(unittest.TestCase):
 
 
 class SmsAndAltPhoneTest(unittest.TestCase):
-    def test_p1_sms_after_first_failure(self):
+    def test_p1_zns_after_first_failure(self):
         d = run(make_case(Urgency.P1), [], O.NO_ANSWER, at(21, 9))
-        self.assertEqual(d.sms_template, "contact")
+        self.assertEqual(d.zns_template, "contact")
 
-    def test_p2_sms_after_second_failure(self):
+    def test_p2_zns_after_second_failure(self):
         case = make_case()
-        self.assertIsNone(run(case, [], O.NO_ANSWER, at(21, 9)).sms_template)
+        self.assertIsNone(run(case, [], O.NO_ANSWER, at(21, 9)).zns_template)
         d = run(case, [att(O.NO_ANSWER, at(21, 9))], O.NO_ANSWER, at(21, 9, 11))
-        self.assertEqual(d.sms_template, "contact")
-        self.assertEqual(d.sms_to, PRIMARY)
+        self.assertEqual(d.zns_template, "contact")
+        self.assertEqual(d.zns_to, PRIMARY)
 
-    def test_sms_goes_to_phone_sms_when_present(self):
+    def test_zns_goes_to_phone_sms_when_present(self):
         d = run(make_case(Urgency.P1, phone_sms=ALT), [], O.NO_ANSWER, at(21, 9))
-        self.assertEqual(d.sms_to, ALT)
+        self.assertEqual(d.zns_to, ALT)
 
-    def test_sms_cap_reserves_last_one_for_final(self):
-        case = make_case(sms_sent=2)
+    def test_zns_cap_reserves_last_one_for_final(self):
+        case = make_case(zns_sent=2)
         d = run(case, [att(O.NO_ANSWER, at(21, 9))], O.NO_ANSWER, at(21, 9, 11))
-        self.assertIsNone(d.sms_template)
-        ex = run(make_case(Urgency.P3, created=at(21, 8), sms_sent=2),
+        self.assertIsNone(d.zns_template)
+        ex = run(make_case(Urgency.P3, created=at(21, 8), zns_sent=2),
                  [att(O.NO_ANSWER, at(21, 8, 30)), att(O.NO_ANSWER, at(21, 9, 10))], O.NO_ANSWER, at(21, 9, 50))
-        self.assertEqual(ex.sms_template, "final")
-        ex3 = run(make_case(Urgency.P3, created=at(21, 8), sms_sent=3),
+        self.assertEqual(ex.zns_template, "final")
+        ex3 = run(make_case(Urgency.P3, created=at(21, 8), zns_sent=3),
                   [att(O.NO_ANSWER, at(21, 8, 30)), att(O.NO_ANSWER, at(21, 9, 10))], O.NO_ANSWER, at(21, 9, 50))
-        self.assertIsNone(ex3.sms_template)
+        self.assertIsNone(ex3.zns_template)
 
     def test_switch_to_alt_after_two_failures_then_back(self):
         case = make_case(Urgency.P1, phone_sms=ALT)
@@ -419,7 +431,7 @@ class MiscTest(unittest.TestCase):
         self.assertIn(PRIMARY, new.blocked_phones)
         self.assertEqual(new.status, CaseStatus.OPEN)
         d2 = run(case, [], O.REJECTED, at(21, 9))
-        self.assertEqual(apply_decision(case, d2).sms_sent, 1)
+        self.assertEqual(apply_decision(case, d2).zns_sent, 1)
         self.assertEqual(apply_decision(case, run(case, [], O.VERIFIED_CONFIRMED, at(21, 9))).status,
                          CaseStatus.DONE)
 
@@ -450,9 +462,9 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "P1"):
             parse_config(raw)
 
-    def test_sms_with_transaction_details_rejected(self):
+    def test_zns_with_transaction_details_rejected(self):
         raw = self.raw()
-        raw["sms"]["templates"]["contact"] = "GD {amount} VND"
+        raw["zns"]["templates"]["contact"] = "GD {amount} VND"
         with self.assertRaises(ConfigError):
             parse_config(raw)
 

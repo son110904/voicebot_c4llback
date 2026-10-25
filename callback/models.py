@@ -139,11 +139,11 @@ class Case:
     phone: str                          # số gọi chính
     created_at: datetime
     urgency: Urgency
-    phone_sms: str | None = None        # Phone_SMS - vừa nhận SMS, vừa là số dự phòng
+    phone_sms: str | None = None        # Phone_SMS - số dự phòng (vẫn gọi là phone_sms theo tên trường bank)
     status: CaseStatus = CaseStatus.OPEN
     card_open: bool = True
     alert_count: int = 1
-    sms_sent: int = 0
+    zns_sent: int = 0                   # số lượng ZNS đã gửi (thay cho sms_sent cũ)
     appointments: int = 0
     do_not_call: bool = False
     blocked_phones: frozenset[str] = frozenset()
@@ -184,11 +184,10 @@ class Decision:
     counts_attempt: bool = False
     next_call_at: datetime | None = None
     target_phone: str | None = None
-    sms_template: str | None = None        # khóa mẫu trong config: "contact" / "final"
-    sms_to: str | None = None
+    zns_template: str | None = None        # khóa mẫu trong config: "pre_call" / "contact" / "final"
+    zns_to: str | None = None
     ticket: str | None = None
     dtv_priority: str | None = None        # "HIGH" / "NORMAL"
     block_phone: str | None = None         # không bao giờ gọi lại số này cho case này
     mark_do_not_call: bool = False
     appointment: bool = False
-    ops_alert: str | None = None           # báo động cho đội vận hành

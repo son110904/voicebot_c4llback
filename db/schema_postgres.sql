@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS cases (
     status         TEXT NOT NULL CHECK (status IN ('OPEN', 'DONE', 'HUMAN', 'STOPPED', 'EXHAUSTED', 'CLOSED')),
     card_open      SMALLINT NOT NULL,
     alert_count    INTEGER NOT NULL DEFAULT 1,
-    sms_sent       INTEGER NOT NULL DEFAULT 0,
+    zns_sent       INTEGER NOT NULL DEFAULT 0,
     appointments   INTEGER NOT NULL DEFAULT 0,
     do_not_call    SMALLINT NOT NULL DEFAULT 0,
     blocked_phones TEXT NOT NULL DEFAULT '[]',
@@ -102,8 +102,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_schedule_active ON schedule (case_id)
     WHERE status IN ('PENDING', 'CLAIMED', 'DIALING');
 CREATE INDEX IF NOT EXISTS ix_schedule_due ON schedule (status, due_at);
 
-CREATE TABLE IF NOT EXISTS sms_log (
-    sms_id      BIGSERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS zns_log (
+    zns_id      BIGSERIAL PRIMARY KEY,
     case_id     TEXT NOT NULL REFERENCES cases (case_id),
     decision_id BIGINT NOT NULL UNIQUE REFERENCES decisions (decision_id),
     phone       TEXT NOT NULL,
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS outbox (
     event_id    BIGSERIAL PRIMARY KEY,
     case_id     TEXT NOT NULL REFERENCES cases (case_id),
     decision_id BIGINT REFERENCES decisions (decision_id),
-    event_type  TEXT NOT NULL CHECK (event_type IN ('SMS', 'DTV_HANDOFF', 'OPS_ALERT', 'CASE_FINAL')),
+    event_type  TEXT NOT NULL CHECK (event_type IN ('PUSH_IPAY', 'ZNS', 'DTV_HANDOFF', 'CASE_FINAL')),
     payload     TEXT NOT NULL,
     status      TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT')),
     tries       INTEGER NOT NULL DEFAULT 0,

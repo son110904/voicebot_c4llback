@@ -84,7 +84,7 @@ def case(case_id):
             FROM decisions d LEFT JOIN llm_labels l ON l.attempt_id = d.attempt_id
             WHERE d.case_id = ? ORDER BY d.decision_id
         """, (case_id,)))
-        sms = list(conn.execute("SELECT * FROM sms_log WHERE case_id = ? ORDER BY sms_id", (case_id,)))
+        zns = list(conn.execute("SELECT * FROM zns_log WHERE case_id = ? ORDER BY zns_id", (case_id,)))
         outbox = list(conn.execute("SELECT * FROM outbox WHERE case_id = ? ORDER BY event_id", (case_id,)))
         schedule = list(conn.execute("SELECT * FROM schedule WHERE case_id = ? ORDER BY schedule_id",
                                      (case_id,)))
@@ -95,7 +95,7 @@ def case(case_id):
     outbox = [{**dict(o), "payload_parsed": json.loads(o["payload"])} for o in outbox]
     blocked = json.loads(c["blocked_phones"])
     return render_template("case.html", c=c, alerts=alerts, attempts=attempts, decisions=decisions,
-                           sms=sms, outbox=outbox, schedule=schedule, blocked=blocked)
+                           zns=zns, outbox=outbox, schedule=schedule, blocked=blocked)
 
 
 if __name__ == "__main__":

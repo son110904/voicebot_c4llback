@@ -210,7 +210,7 @@ class CallResultTest(Base):
         self.dial(at(21, 9))
         self.call("c1", at(21, 9), "No Answer")
         self.assertEqual(self.count("SELECT COUNT(*) FROM sms_log"), 1)
-        self.assertEqual(self.case().sms_sent, 1)
+        self.assertEqual(self.case().zns_sent, 1)
         [ev] = [e for e in self.svc.pending_outbox() if e["event_type"] == "SMS"]
         body = json.loads(ev["payload"])["body"]
         self.assertIn("1900558868", body)

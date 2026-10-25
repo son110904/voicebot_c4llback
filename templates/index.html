@@ -32,7 +32,7 @@
 <table>
 <thead><tr>
 <th>Case</th><th>Mức</th><th>Trạng thái</th><th>Thẻ / KH</th>
-<th>Cảnh báo</th><th>Số cuộc đã tính</th><th>SMS</th><th>Gọi tiếp</th>
+<th>Cảnh báo</th><th>Số cuộc đã tính</th><th>ZNS</th><th>Gọi tiếp</th>
 </tr></thead>
 <tbody>
 {% for c in cases %}
@@ -52,7 +52,7 @@
     {{ c.counted }}/{{ max_calls }}
     {% if c.calls > c.counted %}<span class="muted">(+{{ c.calls - c.counted }} không tính)</span>{% endif %}
   </td>
-  <td>{{ c.sms_sent }}</td>
+  <td>{{ c.zns_sent }}</td>
   <td>{% if c.next_at %}{{ c.next_at|dt }}{% else %}<span class="muted">—</span>{% endif %}</td>
 </tr>
 {% endif %}

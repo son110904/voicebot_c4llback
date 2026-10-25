@@ -168,7 +168,7 @@ def apply_decision(case: Case, d: Decision) -> Case:
     return replace(
         case,
         status=status,
-        sms_sent=case.sms_sent + (1 if d.sms_template else 0),
+        zns_sent=case.zns_sent + (1 if d.zns_template else 0),
         appointments=case.appointments + (1 if d.appointment and d.action is Action.SCHEDULE_CALL else 0),
         do_not_call=case.do_not_call or d.mark_do_not_call,
         blocked_phones=frozenset(blocked),
@@ -226,15 +226,19 @@ def _stop(ctx: _Ctx) -> Decision:
             return Decision(Action.SCHEDULE_CALL, rid, _join(f"{text} -> chặn số này, thử số còn lại", notes),
                             next_call_at=t, target_phone=phone, block_phone=ev.phone)
         return replace(_exhausted(ctx, rid, _join(text, notes), blocked), block_phone=ev.phone)
-    sms, to = _sms(ctx, "final", blocked)
+    zns, to = _zns(ctx, "final", blocked)
     return Decision(Action.STOP, rid, f"{text} -> chặn số này; không còn số khác, ĐTV tìm cách liên hệ",
-                    block_phone=ev.phone, ticket=ticket, dtv_priority=_prio(ctx), sms_template=sms, sms_to=to)
+                    block_phone=ev.phone, ticket=ticket, dtv_priority=_prio(ctx), zns_template=zns, zns_to=to)
 
 
 def _retry_customer(ctx: _Ctx) -> Decision:
     o = ctx.outcome
     ocfg = ctx.cfg.outcomes[o]
     same = sum(1 for a in ctx.history if a.outcome is o)
+    # KH tắt máy sớm vì nghĩ số lạ -> quá n lần thì không gọi nữa, chỉ ZNS + ĐTV
+    if o is Outcome.SHORT_HANGUP and same > ctx.cfg.short_hangup_max_per_case:
+        return _exhausted(ctx, "R5",
+                          f"KH tắt máy sớm {same} lần (nghi do số lạ) -> không gọi nữa, chuyển kênh")
     if ocfg.max_per_case is not None and same > ocfg.max_per_case:
         return _exhausted(ctx, "R2", f"{_label(o)} lần {same}, vượt mức {ocfg.max_per_case} lần/case")
     delay = ocfg.delays[min(same, len(ocfg.delays)) - 1]
@@ -244,14 +248,14 @@ def _retry_customer(ctx: _Ctx) -> Decision:
     t, notes = _earliest_call(ctx, phone, ctx.now + timedelta(minutes=delay))
     if t is None:
         return _exhausted(ctx, "R4", "; ".join(notes))
-    sms, to = _retry_sms(ctx, ocfg)
+    zns, to = _retry_zns(ctx, ocfg)
     head = f"{_label(o)} (lần {same}) -> gọi lại sau {delay} phút"
     if phone != ctx.event.phone:
         head += ", chuyển sang số " + ("dự phòng (Phone_SMS)" if phone == ctx.case.phone_sms else "chính")
-    if sms:
-        head += ", gửi SMS báo KH gọi hotline"
+    if zns:
+        head += ", gửi ZNS báo KH mở iPay / gọi hotline"
     return Decision(Action.SCHEDULE_CALL, "R1", _join(head, notes), next_call_at=t, target_phone=phone,
-                    sms_template=sms, sms_to=to)
+                    zns_template=zns, zns_to=to)
 
 
 def _retry_system(ctx: _Ctx) -> Decision:
@@ -261,29 +265,26 @@ def _retry_system(ctx: _Ctx) -> Decision:
         if OUTCOME_GROUP[a.outcome][0] is not Group.RETRY_SYSTEM:
             break
         streak += 1
-    alert = None
     if streak > ctx.cfg.system_retry_max:
-        alert = (f"Case {case.case_id}: lỗi hệ thống {streak} lần liên tiếp ({o.value}) - "
-                 f"kiểm tra SIP trunk / media adapter / agent")
         if case.urgency is Urgency.P1:
             return Decision(Action.HAND_TO_DTV, "Y2",
-                            f"{_label(o)} {streak} lần liên tiếp, case P1 không chờ được -> ĐTV gọi thủ công",
-                            dtv_priority="HIGH", ticket="LOI_HE_THONG", ops_alert=alert)
+                            f"{_label(o)} {streak} lần liên tiếp, case P1 không chờ được -> ĐTV gọi thủ công "
+                            f"(ghi log để DevOps kiểm tra SIP trunk / media adapter / agent)",
+                            dtv_priority="HIGH", ticket="LOI_HE_THONG")
         rid, delay = "Y3", ctx.cfg.system_backoff_minutes
     else:
         delays = ctx.cfg.outcomes[o].delays
         rid, delay = "Y1", delays[min(streak, len(delays)) - 1]
     phone = ctx.event.phone if ctx.event.phone not in case.blocked_phones else _choose_phone(ctx)
     if phone is None:
-        return replace(_exhausted(ctx, rid, "không còn số điện thoại hợp lệ"), ops_alert=alert)
+        return _exhausted(ctx, rid, "không còn số điện thoại hợp lệ")
     t, notes = _earliest_call(ctx, phone, ctx.now + timedelta(minutes=delay))
     if t is None:
-        return replace(_exhausted(ctx, rid, "; ".join(notes)), ops_alert=alert)
+        return _exhausted(ctx, rid, "; ".join(notes))
     head = f"{_label(o)} (lần {streak} liên tiếp, không tính lượt) -> thử lại sau {delay} phút"
-    if alert:
-        head += ", báo động vận hành"
-    return Decision(Action.SCHEDULE_CALL, rid, _join(head, notes), next_call_at=t, target_phone=phone,
-                    ops_alert=alert)
+    if streak > ctx.cfg.system_retry_max:
+        head += " (P2/P3 backoff dài; DevOps xem log để check hệ thống)"
+    return Decision(Action.SCHEDULE_CALL, rid, _join(head, notes), next_call_at=t, target_phone=phone)
 
 
 def _appointment(ctx: _Ctx) -> Decision:
@@ -340,17 +341,17 @@ def _effective_outcome(event: Event, cfg: Config) -> Outcome:
 
 def _exhausted(ctx: _Ctx, rule_id: str, why: str, extra_blocked: frozenset[str] = frozenset()) -> Decision:
     case = ctx.case
-    sms, to = _sms(ctx, "final", extra_blocked)
+    zns, to = _zns(ctx, "final", extra_blocked)
     reason = f"Hết lượt gọi: {why}. Tạo ticket 'không liên hệ được'"
-    if sms:
-        reason += ", gửi SMS cuối"
+    if zns:
+        reason += ", gửi ZNS cuối"
     prio = None
     if case.urgency is Urgency.P1:
         prio = "HIGH"
         reason += "; P1 -> chuyển ĐTV ưu tiên cao"
         if case.card_open:
             reason += " (thẻ còn mở: ĐTV xem xét khóa thẻ, bot không tự khóa)"
-    return Decision(Action.EXHAUSTED, rule_id, reason, sms_template=sms, sms_to=to,
+    return Decision(Action.EXHAUSTED, rule_id, reason, zns_template=zns, zns_to=to,
                     ticket="KHONG_LIEN_HE_DUOC", dtv_priority=prio)
 
 
@@ -378,22 +379,22 @@ def _primary_fail_streak(ctx: _Ctx) -> int:
     return n
 
 
-def _retry_sms(ctx: _Ctx, ocfg: OutcomeConfig) -> tuple[str | None, str | None]:
+def _retry_zns(ctx: _Ctx, ocfg: OutcomeConfig) -> tuple[str | None, str | None]:
     failures = sum(1 for a in ctx.history
                    if a.counted and OUTCOME_GROUP[a.outcome][0] is Group.RETRY_CUSTOMER)
-    if ocfg.sms_before or failures == ctx.level.sms_after_failures:
-        return _sms(ctx, "contact")
+    if ocfg.zns_before or failures == ctx.level.zns_after_failures:
+        return _zns(ctx, "contact")
     return None, None
 
 
-def _sms(ctx: _Ctx, kind: str, extra_blocked: frozenset[str] = frozenset()) -> tuple[str | None, str | None]:
+def _zns(ctx: _Ctx, kind: str, extra_blocked: frozenset[str] = frozenset()) -> tuple[str | None, str | None]:
     case = ctx.case
     to = case.phone_sms or case.phone
     if case.do_not_call or to in case.blocked_phones or to in extra_blocked:
         return None, None
-    # luôn chừa 1 tin cho SMS cuối khi hết lượt
-    limit = ctx.cfg.sms_max_per_case if kind == "final" else ctx.cfg.sms_max_per_case - 1
-    if case.sms_sent >= limit:
+    # luôn chừa 1 tin cho ZNS cuối khi hết lượt
+    limit = ctx.cfg.zns_max_per_case if kind == "final" else ctx.cfg.zns_max_per_case - 1
+    if case.zns_sent >= limit:
         return None, None
     return kind, to
 

@@ -66,7 +66,7 @@ def demo_merge():
 
 
 def demo_scenarios():
-    print("\n=== Case P1: không nghe, lỗi hệ thống, SMS, KH xác nhận")
+    print("\n=== Case P1: không nghe, lỗi hệ thống, ZNS, KH xác nhận")
     svc = CallbackService(connect(), load_config(), config_version="demo-v1")
     svc.ingest_alert(Alert("A1", "CARD-1", "KH1", 2_000_000, approved=True, card_blocked=False,
                            created_at=at(21, 9)), PRIMARY, at(21, 9), phone_sms=ALT)

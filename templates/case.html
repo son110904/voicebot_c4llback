@@ -28,7 +28,7 @@
   </div>
   <div class="box">
     <div class="k">Hoạt động</div>
-    <div class="v">{{ attempts|length }} cuộc · {{ c.sms_sent }} SMS</div>
+    <div class="v">{{ attempts|length }} cuộc · {{ c.zns_sent }} SMS</div>
     {% if c.appointments %}<div class="muted">{{ c.appointments }} lần KH hẹn</div>{% endif %}
     {% if c.do_not_call %}<div class="muted" style="color: var(--stop);">⚠ KH yêu cầu không gọi</div>{% endif %}
   </div>
@@ -55,8 +55,8 @@
          {% if d.detail_parsed.appointment %}<span class="badge badge-sm badge-appt">KH hẹn</span>{% endif %}
       </span>
     {% endif %}
-    {% if d.detail_parsed.sms_template %}
-      <span>✉ SMS <code>{{ d.detail_parsed.sms_template }}</code> → <code>{{ d.detail_parsed.sms_to }}</code></span>
+    {% if d.detail_parsed.zns_template %}
+      <span>✉ SMS <code>{{ d.detail_parsed.zns_template }}</code> → <code>{{ d.detail_parsed.zns_to }}</code></span>
     {% endif %}
     {% if d.detail_parsed.dtv_priority %}
       <span>👤 ĐTV <span class="badge badge-sm badge-{{ 'stop' if d.detail_parsed.dtv_priority == 'HIGH' else 'human' }}">{{ d.detail_parsed.dtv_priority }}</span></span>
@@ -105,10 +105,10 @@
 </table>
 </div>
 
-{% if sms %}
-<h2>SMS đã gửi ({{ sms|length }})</h2>
+{% if zns %}
+<h2>ZNS đã gửi ({{ zns|length }})</h2>
 <div class="card">
-{% for m in sms %}
+{% for m in zns %}
 <div style="margin-bottom: 12px;">
   <div class="step-meta">
     <span class="highlight">{{ m.created_at|dt }}</span>

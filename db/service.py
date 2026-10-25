@@ -97,10 +97,29 @@ class CallbackService:
                         do_not_call=repo.customer_do_not_call(c, alert.customer_id))
             repo.insert_case(c, case, now)
             repo.insert_alert(c, alert, case.case_id, now)
-            d = pre_dial_check(case, [], phone, now, self.cfg, self._phone_history(c, case, now))
-            d = replace(d, reason=f"Tạo case mới mức {urgency.value} ({why}); {d.reason}")
+
+            # Pre-notification: gửi push iPay báo trước để KH không tắt máy khi thấy số lạ.
+            # Lịch gọi đầu tiên lùi push_lead_minutes phút, P1 (gấp) thì bỏ qua delay.
+            self._push_ipay(c, case, now)
+            lead = 0 if case.urgency is Urgency.P1 else self.cfg.pre_call_push_lead_minutes
+            call_at = now + timedelta(minutes=lead)
+
+            d = pre_dial_check(case, [], phone, call_at, self.cfg, self._phone_history(c, case, now))
+            d = replace(d, reason=f"Tạo case mới mức {urgency.value} ({why}); "
+                                   f"đã push iPay báo trước {lead} phút; {d.reason}")
+            if d.action is Action.DIAL_NOW and lead > 0:
+                # Lùi lịch gọi để KH có thời gian xem push iPay
+                d = replace(d, action=Action.SCHEDULE_CALL, next_call_at=call_at)
             self._apply(c, case, 0, d, "alert", None, now)
             return IngestResult(case.case_id, merged=False, duplicate=False, decision=d)
+
+    def _push_ipay(self, c, case: Case, now: datetime) -> None:
+        """Ghi event PUSH_IPAY vào outbox để team iPay/core bank gửi notification tới app KH."""
+        body = self.cfg.zns_templates.get("pre_call", "")
+        repo.insert_outbox(c, case.case_id, None, "PUSH_IPAY",
+                           {"customer_id": case.customer_id, "case_id": case.case_id,
+                            "urgency": case.urgency.value, "hotline": self.cfg.hotline,
+                            "body": body}, now)
 
     # ------------------------------------------------------------ gọi
 
@@ -272,10 +291,10 @@ class CallbackService:
             if d.action is Action.SCHEDULE_CALL or (d.action is Action.DIAL_NOW and kind != "pre_dial"):
                 repo.insert_schedule(c, case.case_id, d.next_call_at or now, d.target_phone, d.appointment, did, now)
 
-        if d.sms_template:
-            body = self.cfg.sms_templates[d.sms_template]
-            repo.insert_sms(c, case.case_id, did, d.sms_to, d.sms_template, body, now)
-            repo.insert_outbox(c, case.case_id, did, "SMS", {"to": d.sms_to, "template": d.sms_template,
+        if d.zns_template:
+            body = self.cfg.zns_templates[d.zns_template]
+            repo.insert_zns(c, case.case_id, did, d.zns_to, d.zns_template, body, now)
+            repo.insert_outbox(c, case.case_id, did, "ZNS", {"to": d.zns_to, "template": d.zns_template,
                                                               "body": body}, now)
         if d.action is Action.HAND_TO_DTV or d.dtv_priority:
             payload = handoff_context or {
@@ -285,8 +304,6 @@ class CallbackService:
                 "rule_id": d.rule_id, "reason": d.reason, "handoff_at": repo.ts(now),
             }
             repo.insert_outbox(c, case.case_id, did, "DTV_HANDOFF", payload, now)
-        if d.ops_alert:
-            repo.insert_outbox(c, case.case_id, did, "OPS_ALERT", {"message": d.ops_alert}, now)
         if case.status is CaseStatus.OPEN and new.status is not CaseStatus.OPEN:
             repo.insert_outbox(c, case.case_id, did, "CASE_FINAL",
                                {"status": new.status.value, "ticket": d.ticket, "rule_id": d.rule_id,

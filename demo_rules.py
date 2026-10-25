@@ -33,11 +33,11 @@ def simulate(title, case, script, cfg):
         event = Event(started_at=t, phone=phone, outcome=outcome, callback_at=callback_at,
                       llm_confidence=0.9 if callback_at else None)
         d = decide(case, attempts, event, t + timedelta(minutes=1), cfg)
-        line = f"{t:%d/%m %H:%M} số {'chính' if phone == case.phone else 'SMS  '} {outcome.value:<20} -> {d.action.value}"
+        line = f"{t:%d/%m %H:%M} số {'chính' if phone == case.phone else 'ZNS  '} {outcome.value:<20} -> {d.action.value}"
         if d.next_call_at:
             line += f" lúc {d.next_call_at:%d/%m %H:%M}"
-        if d.sms_template:
-            line += f" +SMS[{d.sms_template}]"
+        if d.zns_template:
+            line += f" +ZNS[{d.zns_template}]"
         print(f"    {line}")
         print(f"        [{d.rule_id}] {d.reason}")
         attempts.append(Attempt(t, phone, d.outcome, d.counts_attempt))
@@ -64,7 +64,7 @@ def main():
              case(Urgency.P1, datetime(2026, 10, 21, 9, 0, tzinfo=VN), phone_sms=ALT),
              [Outcome.NO_ANSWER] * 8, cfg)
 
-    simulate("P3 GD bị từ chối: nhầm số, gọi số SMS thì Khách phủ nhận giao dịch",
+    simulate("P3 GD bị từ chối: nhầm số, gọi số ZNS thì Khách phủ nhận giao dịch",
              case(Urgency.P3, datetime(2026, 10, 21, 7, 45, tzinfo=VN), phone_sms=ALT),
              [Outcome.WRONG_NUMBER, Outcome.VERIFIED_DENIED], cfg)
 

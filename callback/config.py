@@ -49,7 +49,7 @@ class LevelConfig:
     min_gap_minutes: int
     window: Window
     max_days: float
-    sms_after_failures: int
+    zns_after_failures: int
     appointment_max_wait_minutes: int
     max_appointments: int
 
@@ -57,7 +57,7 @@ class LevelConfig:
 @dataclass(frozen=True)
 class OutcomeConfig:
     delays: tuple[int, ...]
-    sms_before: bool = False
+    zns_before: bool = False
     max_per_case: int | None = None
 
 
@@ -68,6 +68,9 @@ class Config:
     rolling_window: timedelta
     per_phone_cap_24h: int
     llm_min_confidence: float
+    hotline: str                              # caller ID hiển thị khi bot gọi outbound
+    pre_call_push_lead_minutes: int           # push iPay trước cuộc gọi đầu bao lâu
+    short_hangup_max_per_case: int            # KH tắt máy sớm (< 5s) tối đa n lần
     alt_switch_after: int
     alt_max_attempts: int
     system_retry_max: int
@@ -75,8 +78,8 @@ class Config:
     appointment_default_minutes: int
     large_amount_vnd: int
     multi_alert_count: int
-    sms_max_per_case: int
-    sms_templates: Mapping[str, str]
+    zns_max_per_case: int
+    zns_templates: Mapping[str, str]
     levels: Mapping[Urgency, LevelConfig]
     outcomes: Mapping[Outcome, OutcomeConfig]
 
@@ -107,7 +110,7 @@ def _build(raw: dict[str, Any]) -> Config:
             min_gap_minutes=int(v["min_gap_minutes"]),
             window=Window.parse(v["window"]),
             max_days=float(v["max_days"]),
-            sms_after_failures=int(v["sms_after_failures"]),
+            zns_after_failures=int(v["zns_after_failures"]),
             appointment_max_wait_minutes=int(v["appointment_max_wait_minutes"]),
             max_appointments=int(v["max_appointments"]),
         )
@@ -116,7 +119,7 @@ def _build(raw: dict[str, Any]) -> Config:
     outcomes = {
         Outcome(k): OutcomeConfig(
             delays=tuple(int(x) for x in v["delays"]),
-            sms_before=bool(v.get("sms_before", False)),
+            zns_before=bool(v.get("zns_before", False)),
             max_per_case=None if v.get("max_per_case") is None else int(v["max_per_case"]),
         )
         for k, v in raw["outcomes"].items()
@@ -127,6 +130,9 @@ def _build(raw: dict[str, Any]) -> Config:
         rolling_window=timedelta(hours=float(raw["rolling_window_hours"])),
         per_phone_cap_24h=int(raw["per_phone_cap_24h"]),
         llm_min_confidence=float(raw["llm_min_confidence"]),
+        hotline=str(raw["hotline"]),
+        pre_call_push_lead_minutes=int(raw["pre_call"]["push_lead_minutes"]),
+        short_hangup_max_per_case=int(raw["pre_call"]["short_hangup_max_per_case"]),
         alt_switch_after=int(raw["alt_phone"]["switch_after_failures"]),
         alt_max_attempts=int(raw["alt_phone"]["max_attempts"]),
         system_retry_max=int(raw["system_retry"]["max_in_a_row"]),
@@ -134,8 +140,8 @@ def _build(raw: dict[str, Any]) -> Config:
         appointment_default_minutes=int(raw["appointment"]["default_minutes"]),
         large_amount_vnd=int(raw["urgency"]["large_amount_vnd"]),
         multi_alert_count=int(raw["urgency"]["multi_alert_count"]),
-        sms_max_per_case=int(raw["sms"]["max_per_case"]),
-        sms_templates=dict(raw["sms"]["templates"]),
+        zns_max_per_case=int(raw["zns"]["max_per_case"]),
+        zns_templates=dict(raw["zns"]["templates"]),
         levels=levels,
         outcomes=outcomes,
     )
@@ -153,8 +159,8 @@ def _validate(cfg: Config) -> list[str]:
             errs.append(f"{u.value}: max_calls_24h phải >= 1")
         if lv.max_days <= 0:
             errs.append(f"{u.value}: max_days phải > 0")
-        if lv.sms_after_failures < 1:
-            errs.append(f"{u.value}: sms_after_failures phải >= 1")
+        if lv.zns_after_failures < 1:
+            errs.append(f"{u.value}: zns_after_failures phải >= 1")
         if lv.appointment_max_wait_minutes <= 0 or lv.max_appointments < 0:
             errs.append(f"{u.value}: cấu hình hẹn gọi lại không hợp lệ")
 
@@ -167,14 +173,20 @@ def _validate(cfg: Config) -> list[str]:
         if oc.max_per_case is not None and oc.max_per_case < 1:
             errs.append(f"outcome '{o.value}': max_per_case phải >= 1")
 
-    for key in ("contact", "final"):
-        text = cfg.sms_templates.get(key)
+    for key in ("pre_call", "contact", "final"):
+        text = cfg.zns_templates.get(key)
         if not text:
-            errs.append(f"thiếu mẫu SMS '{key}'")
+            errs.append(f"thiếu mẫu ZNS '{key}'")
         elif "{" in text or "}" in text:
-            errs.append(f"mẫu SMS '{key}' không được có biến - SMS không được chứa chi tiết giao dịch")
-    if cfg.sms_max_per_case < 1:
-        errs.append("sms.max_per_case phải >= 1")
+            errs.append(f"mẫu ZNS '{key}' không được có biến - KHÔNG chứa chi tiết giao dịch")
+    if cfg.zns_max_per_case < 1:
+        errs.append("zns.max_per_case phải >= 1")
+    if not cfg.hotline.strip():
+        errs.append("thiếu hotline (số hiển thị khi bot gọi outbound)")
+    if cfg.pre_call_push_lead_minutes < 0:
+        errs.append("pre_call.push_lead_minutes phải >= 0")
+    if cfg.short_hangup_max_per_case < 1:
+        errs.append("pre_call.short_hangup_max_per_case phải >= 1")
     if not 0 < cfg.llm_min_confidence <= 1:
         errs.append("llm_min_confidence phải trong (0, 1]")
     if cfg.per_phone_cap_24h < 1:
