@@ -33,7 +33,7 @@ urgency:
 levels:
   P1:                          # thẻ còn mở + GD được cấp phép / số tiền lớn / nhiều cảnh báo
     max_calls_24h: 5           # case khẩn có rule riêng
-    min_gap_minutes: 10
+    min_gap_minutes: 5
     window: "00:00-24:00"
     max_days: 1
     zns_after_failures: 1      # gửi ZNS ngay sau lần gọi hụt đầu tiên

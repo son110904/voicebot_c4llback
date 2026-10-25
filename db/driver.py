@@ -85,7 +85,7 @@ def connect(url: str = "") -> Conn:
 
 def reset(conn: Conn) -> None:
     """Xóa sạch dữ liệu demo/test, không drop bảng."""
-    for t in ("outbox", "sms_log", "schedule", "decisions", "llm_labels",
+    for t in ("outbox", "zns_log", "schedule", "decisions", "llm_labels",
               "call_attempts", "alerts", "cases"):
         conn.execute(f"DELETE FROM {t}", ())
     conn.commit()
