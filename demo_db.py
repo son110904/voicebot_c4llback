@@ -1,7 +1,4 @@
-"""Mô phỏng cả luồng: cảnh báo -> gọi -> kết quả -> quyết định -> lịch mới, lưu đầy đủ trong SQLite.
-
-Dữ liệu giả. In timeline của case và nội dung outbox (việc chờ đẩy ra agent của Đạt/SMS gateway/ĐTV).
-Chạy: python demo_db.py
+"""Mô phỏng cả luồng: cảnh báo -> gọi -> kết quả -> quyết định -> lịch mới, lưu đầy đủ trong Postgres.
 """
 import json
 import sys

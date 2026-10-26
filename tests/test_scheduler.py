@@ -105,12 +105,12 @@ class SchedulerTest(unittest.TestCase):
     def test_outbox_dispatched(self):
         svc = new_svc()
         clock = Clock(at(22, 9))
-        seed(svc, at(22, 9), approved=True, blocked=False)       # P1 -> SMS ngay sau lần hụt đầu
+        seed(svc, at(22, 9), approved=True, blocked=False)       # P1 -> ZNS ngay sau lần hụt đầu
         sent = []
         s = Scheduler(svc, FakeDialer(DialResult("c1", "No Answer")), dispatcher=sent.append, clock=clock)
         s.tick()
         kinds = sorted(e["event_type"] for e in sent)
-        self.assertIn("SMS", kinds)
+        self.assertIn("ZNS", kinds)
         self.assertEqual(svc.pending_outbox(), [])
 
     def test_outbox_dispatcher_failure_keeps_pending(self):

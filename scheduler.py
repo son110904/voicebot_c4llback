@@ -5,7 +5,7 @@ Vòng lặp:
     2. Nhận các lịch tới hạn (claim_due_calls) - ưu tiên P1.
     3. Với mỗi lịch: pre_dial_check; nếu DIAL_NOW thì để `dialer` quay số và trả kết quả về
        `record_call_result`.
-    4. Đẩy outbox (SMS/ĐTV handoff/ops alert) cho các dispatcher ngoài.
+    4. Đẩy outbox (ZNS/ĐTV handoff/ops alert) cho các dispatcher ngoài.
     5. Ngủ tới lịch kế tiếp hoặc tối đa `tick_s` giây.
 
 `dialer` là callable thật/giả: nhận ScheduledCall + Decision, gọi tổng đài, trả về
@@ -42,7 +42,7 @@ class Dialer(Protocol):
 
 
 class OutboxDispatcher(Protocol):
-    """Gửi 1 event outbox đi (SMS gateway / agent của Đạt / hàng đợi ĐTV / báo động vận hành)."""
+    """Gửi 1 event outbox đi (ZNS gateway / agent của Đạt / hàng đợi ĐTV / báo động vận hành)."""
     def __call__(self, event: dict) -> None: ...
 
 

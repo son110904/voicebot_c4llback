@@ -117,7 +117,7 @@ class Action(str, Enum):
     CLOSE = "CLOSE"                    # xong, đóng case
     HAND_TO_DTV = "HAND_TO_DTV"        # bot dừng, đưa vào hàng đợi ĐTV
     STOP = "STOP"                      # bot dừng (có thể kèm ticket / ĐTV)
-    EXHAUSTED = "EXHAUSTED"            # hết lượt: SMS cuối + ticket "không liên hệ được"
+    EXHAUSTED = "EXHAUSTED"            # hết lượt: ZNS cuối + ticket "không liên hệ được"
 
 
 @dataclass(frozen=True)

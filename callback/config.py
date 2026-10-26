@@ -80,6 +80,7 @@ class Config:
     multi_alert_count: int
     zns_max_per_case: int
     zns_templates: Mapping[str, str]
+    opt_out_prompt: str
     levels: Mapping[Urgency, LevelConfig]
     outcomes: Mapping[Outcome, OutcomeConfig]
 
@@ -142,6 +143,7 @@ def _build(raw: dict[str, Any]) -> Config:
         multi_alert_count=int(raw["urgency"]["multi_alert_count"]),
         zns_max_per_case=int(raw["zns"]["max_per_case"]),
         zns_templates=dict(raw["zns"]["templates"]),
+        opt_out_prompt=str(raw.get("call_script", {}).get("opt_out_prompt", "")),
         levels=levels,
         outcomes=outcomes,
     )
@@ -187,6 +189,8 @@ def _validate(cfg: Config) -> list[str]:
         errs.append("pre_call.push_lead_minutes phải >= 0")
     if cfg.short_hangup_max_per_case < 1:
         errs.append("pre_call.short_hangup_max_per_case phải >= 1")
+    if not cfg.opt_out_prompt.strip():
+        errs.append("thiếu call_script.opt_out_prompt (chuẩn quốc tế yêu cầu bot phải cho KH chọn opt-out)")
     if not 0 < cfg.llm_min_confidence <= 1:
         errs.append("llm_min_confidence phải trong (0, 1]")
     if cfg.per_phone_cap_24h < 1:

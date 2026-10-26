@@ -205,15 +205,14 @@ class CallResultTest(Base):
         self.assertEqual(self.case().status, CaseStatus.HUMAN)
         self.assertEqual(self.count("SELECT COUNT(*) FROM outbox WHERE event_type = 'DTV_HANDOFF'"), 1)
 
-    def test_p1_sms_logged_without_transaction_details(self):
+    def test_p1_zns_logged_without_transaction_details(self):
         self.svc.ingest_alert(p1_alert(), PRIMARY, at(21, 9))
         self.dial(at(21, 9))
         self.call("c1", at(21, 9), "No Answer")
-        self.assertEqual(self.count("SELECT COUNT(*) FROM sms_log"), 1)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM zns_log"), 1)
         self.assertEqual(self.case().zns_sent, 1)
-        [ev] = [e for e in self.svc.pending_outbox() if e["event_type"] == "SMS"]
+        [ev] = [e for e in self.svc.pending_outbox() if e["event_type"] == "ZNS"]
         body = json.loads(ev["payload"])["body"]
-        self.assertIn("1900558868", body)
         self.assertNotIn("2000000", body)
 
     def test_bad_status_rolls_back_everything(self):

@@ -39,7 +39,7 @@ def run(case, attempts, outcome, start, phone=PRIMARY, phone_history=None, **kw)
 
 
 class RetryCustomerTest(unittest.TestCase):
-    def test_no_answer_escalates_10_30_60(self):
+    def test_no_answer_escalates_10_then_30(self):
         case = make_case(Urgency.P1)
         d1 = run(case, [], O.NO_ANSWER, at(21, 9))
         self.assertEqual(d1.action, Action.SCHEDULE_CALL)
@@ -48,9 +48,10 @@ class RetryCustomerTest(unittest.TestCase):
         self.assertEqual(d1.next_call_at, at(21, 9, 11))
         d2 = run(case, [att(O.NO_ANSWER, at(21, 9))], O.NO_ANSWER, at(21, 9, 11))
         self.assertEqual(d2.next_call_at, at(21, 9, 42))
+        # P1 max_calls_24h=3 -> lần 3 chạm rolling limit -> exhausted
         d3 = run(case, [att(O.NO_ANSWER, at(21, 9)), att(O.NO_ANSWER, at(21, 9, 11))],
                  O.NO_ANSWER, at(21, 9, 42))
-        self.assertEqual(d3.next_call_at, at(21, 10, 43))
+        self.assertEqual(d3.action, Action.EXHAUSTED)
 
     def test_busy_10_minutes(self):
         d = run(make_case(), [], O.BUSY, at(21, 9))
@@ -131,16 +132,16 @@ class LimitTest(unittest.TestCase):
 
     def test_p1_exhausted_goes_to_dtv_with_card_lock_note(self):
         case = make_case(Urgency.P1, created=at(21, 8, 55))
-        hist = [att(O.NO_ANSWER, t) for t in (at(21, 9), at(21, 9, 11), at(21, 9, 42), at(21, 10, 43))]
-        d = run(case, hist, O.NO_ANSWER, at(21, 11, 44))
+        hist = [att(O.NO_ANSWER, t) for t in (at(21, 9), at(21, 9, 11))]
+        d = run(case, hist, O.NO_ANSWER, at(21, 9, 42))
         self.assertEqual(d.action, Action.EXHAUSTED)
         self.assertEqual(d.dtv_priority, "HIGH")
         self.assertIn("khóa thẻ", d.reason)
 
     def test_next_call_exactly_at_deadline_is_exhausted(self):
         case = make_case(Urgency.P1, created=at(21, 9))
-        hist = [att(O.NO_ANSWER, t) for t in (at(21, 9), at(21, 9, 11), at(21, 9, 42), at(21, 10, 43))]
-        d = run(case, hist, O.NO_ANSWER, at(21, 11, 44))  # lần sớm nhất 22/10 09:00 = đúng hạn
+        hist = [att(O.NO_ANSWER, t) for t in (at(21, 9), at(21, 9, 11))]
+        d = run(case, hist, O.NO_ANSWER, at(21, 9, 42))  # 3 cuộc → rolling limit → sớm nhất 22/10 09:00 = đúng hạn
         self.assertEqual(d.action, Action.EXHAUSTED)
 
     def test_per_phone_cap_across_cases(self):
@@ -193,7 +194,7 @@ class StopAndHumanTest(unittest.TestCase):
         self.assertEqual(d.action, Action.STOP)
         self.assertEqual(d.block_phone, PRIMARY)
         self.assertEqual(d.ticket, "SAI_SO")
-        self.assertIsNone(d.zns_template)  # không SMS cho người lạ
+        self.assertIsNone(d.zns_template)  # không ZNS cho người lạ
 
     def test_wrong_number_with_alt_tries_alt(self):
         d = run(make_case(phone_sms=ALT), [], O.WRONG_NUMBER, at(21, 9))
@@ -319,14 +320,15 @@ class SmsAndAltPhoneTest(unittest.TestCase):
                   [att(O.NO_ANSWER, at(21, 8, 30)), att(O.NO_ANSWER, at(21, 9, 10))], O.NO_ANSWER, at(21, 9, 50))
         self.assertIsNone(ex3.zns_template)
 
-    def test_switch_to_alt_after_two_failures_then_back(self):
+    def test_switch_to_alt_after_two_failures(self):
         case = make_case(Urgency.P1, phone_sms=ALT)
         d1 = run(case, [att(O.NO_ANSWER, at(21, 9))], O.NO_ANSWER, at(21, 9, 11))
         self.assertEqual(d1.target_phone, ALT)
         self.assertEqual(d1.next_call_at, at(21, 9, 42))
+        # P1 max_calls_24h=3 -> lần 3 (trên ALT) chạm rolling limit -> exhausted
         hist = [att(O.NO_ANSWER, at(21, 9)), att(O.NO_ANSWER, at(21, 9, 11))]
         d2 = run(case, hist, O.NO_ANSWER, at(21, 9, 42), phone=ALT)
-        self.assertEqual(d2.target_phone, PRIMARY)
+        self.assertEqual(d2.action, Action.EXHAUSTED)
 
 
 class GuardAndPreDialTest(unittest.TestCase):
@@ -380,7 +382,7 @@ class MergeAlertTest(unittest.TestCase):
         self.assertEqual(r.case.alert_count, 2)
         self.assertEqual(r.case.urgency, Urgency.P1)
         self.assertEqual(r.decision.action, Action.SCHEDULE_CALL)
-        self.assertEqual(r.decision.next_call_at, at(21, 9, 10))
+        self.assertEqual(r.decision.next_call_at, at(21, 9, 5))
 
     def test_other_customer_not_merged(self):
         r = merge_alert(make_case(), self.alert(card_ref="X", customer_id="KH2"), [], at(21, 9, 5), CFG)
@@ -458,7 +460,7 @@ class ConfigTest(unittest.TestCase):
 
     def test_gap_below_docs_rejected(self):
         raw = self.raw()
-        raw["levels"]["P1"]["min_gap_minutes"] = 5
+        raw["levels"]["P1"]["min_gap_minutes"] = 4
         with self.assertRaisesRegex(ConfigError, "P1"):
             parse_config(raw)
 
@@ -478,6 +480,12 @@ class ConfigTest(unittest.TestCase):
         raw = self.raw()
         raw["outcomes"]["khong_ton_tai"] = {"delays": [10]}
         with self.assertRaises(ConfigError):
+            parse_config(raw)
+
+    def test_missing_opt_out_prompt_rejected(self):
+        raw = self.raw()
+        del raw["call_script"]
+        with self.assertRaisesRegex(ConfigError, "opt_out"):
             parse_config(raw)
 
 

@@ -1,10 +1,9 @@
 """Dashboard Flask: xem danh sách case và timeline từng quyết định của rule engine.
 
-Đọc DB (SQLite hoặc Postgres) qua db.driver.connect — URL lấy từ CALLBACK_DB_URL.
+Đọc DB (Postgres) qua db.driver.connect — URL lấy từ CALLBACK_DB_URL.
 Chỉ ĐỌC - không gọi điện, không ghi.
 
-Chạy: python app.py                                 (SQLite: demo.db)
-      CALLBACK_DB_URL=postgresql://... python app.py (Postgres)
+Chạy: CALLBACK_DB_URL=postgresql://... python app.py
 """
 import json
 import os

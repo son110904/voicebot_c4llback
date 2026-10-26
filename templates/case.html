@@ -28,7 +28,7 @@
   </div>
   <div class="box">
     <div class="k">Hoạt động</div>
-    <div class="v">{{ attempts|length }} cuộc · {{ c.zns_sent }} SMS</div>
+    <div class="v">{{ attempts|length }} cuộc · {{ c.zns_sent }} ZNS</div>
     {% if c.appointments %}<div class="muted">{{ c.appointments }} lần KH hẹn</div>{% endif %}
     {% if c.do_not_call %}<div class="muted" style="color: var(--stop);">⚠ KH yêu cầu không gọi</div>{% endif %}
   </div>
@@ -56,7 +56,7 @@
       </span>
     {% endif %}
     {% if d.detail_parsed.zns_template %}
-      <span>✉ SMS <code>{{ d.detail_parsed.zns_template }}</code> → <code>{{ d.detail_parsed.zns_to }}</code></span>
+      <span>✉ ZNS <code>{{ d.detail_parsed.zns_template }}</code> → <code>{{ d.detail_parsed.zns_to }}</code></span>
     {% endif %}
     {% if d.detail_parsed.dtv_priority %}
       <span>👤 ĐTV <span class="badge badge-sm badge-{{ 'stop' if d.detail_parsed.dtv_priority == 'HIGH' else 'human' }}">{{ d.detail_parsed.dtv_priority }}</span></span>

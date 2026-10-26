@@ -2,15 +2,14 @@
 
     TWO/TWFA cảnh báo ─► ingest_alert() ─► schedule (PENDING)
     scheduler ─► claim_due_calls() ─► start_call() [kiểm tra lại case] ─► agent quay số
-    tổng đài + LLM ─► record_call_result() ─► decide() ─► lịch gọi lại / SMS / ĐTV
-    outbox ─► hệ thống ngoài (agent của Đạt, SMS gateway, hàng đợi ĐTV, vận hành) đọc rồi đánh dấu đã gửi
+    tổng đài + LLM ─► record_call_result() ─► decide() ─► lịch gọi lại / ZNS / ĐTV
+    outbox ─► hệ thống ngoài (agent của Đạt, ZNS gateway, hàng đợi ĐTV, vận hành) đọc rồi đánh dấu đã gửi
 
-Mỗi hàm public chạy trong 1 transaction: hoặc ghi đủ (cuộc gọi + quyết định + lịch + SMS + outbox),
+Mỗi hàm public chạy trong 1 transaction: hoặc ghi đủ (cuộc gọi + quyết định + lịch + ZNS + outbox),
 hoặc không ghi gì. `now` luôn do bên gọi truyền vào để test/mô phỏng được.
 """
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
@@ -56,7 +55,7 @@ class LlmLabel:
 
 
 class CallbackService:
-    def __init__(self, conn: sqlite3.Connection, cfg: Config, config_version: str = "dev",
+    def __init__(self, conn, cfg: Config, config_version: str = "dev",
                  claim_ttl: timedelta = timedelta(minutes=5), dial_timeout: timedelta = timedelta(minutes=15)):
         self.conn = conn
         self.cfg = cfg
@@ -280,7 +279,7 @@ class CallbackService:
 
     def _apply(self, c, case: Case, version: int, d: Decision, kind: str, attempt_id: int | None,
                now: datetime, reschedule: bool = True, handoff_context: dict | None = None) -> int:
-        """Ghi hệ quả của 1 quyết định: case, log quyết định, lịch, SMS, outbox."""
+        """Ghi hệ quả của 1 quyết định: case, log quyết định, lịch, ZNS, outbox."""
         new = apply_decision(case, d)
         repo.update_case(c, new, version, now)
         did = repo.insert_decision(c, case.case_id, attempt_id, kind, d, self.config_version, now)

@@ -3,7 +3,7 @@
 Các hàm công khai đều là hàm thuần: không đọc/ghi DB, không gọi mạng, không tự lấy giờ hệ thống.
 Cùng đầu vào -> cùng quyết định, nên test được và tái hiện được khi cần giải trình.
 
-- decide()          sau mỗi cuộc gọi: làm gì tiếp (gọi lại lúc nào, SMS, chuyển ĐTV, dừng...)
+- decide()          sau mỗi cuộc gọi: làm gì tiếp (gọi lại lúc nào, ZNS, chuyển ĐTV, dừng...)
 - pre_dial_check()  ngay trước khi quay số: case còn được gọi không, giờ này gọi được không
 - merge_alert()     cảnh báo mới của cùng thẻ/KH khi case đang mở: gộp, nâng mức khẩn, không reset lượt
 - apply_decision()  cập nhật Case theo Decision (cho tầng DB/scheduler)
@@ -162,7 +162,7 @@ def merge_alert(case: Case, alert: Alert, attempts: Sequence[Attempt], now: date
 
 
 def apply_decision(case: Case, d: Decision) -> Case:
-    """Case sau khi thực hiện Decision (đếm SMS, số lần hẹn, chặn số, trạng thái)."""
+    """Case sau khi thực hiện Decision (đếm ZNS, số lần hẹn, chặn số, trạng thái)."""
     status = case.status if d.rule_id == "G1" else _STATUS_AFTER[d.action]
     blocked = case.blocked_phones | {d.block_phone} if d.block_phone else case.blocked_phones
     return replace(
@@ -201,7 +201,7 @@ def _stop(ctx: _Ctx) -> Decision:
     if o is Outcome.VERIFY_FAILED:
         return Decision(Action.STOP, "S3",
                         "Xác thực danh tính sai nhiều lần -> nghi SIM bị chiếm/người lạ giữ máy; "
-                        "không gọi lại số này, không gửi SMS, ĐTV xử lý ưu tiên cao",
+                        "không gọi lại số này, không gửi ZNS, ĐTV xử lý ưu tiên cao",
                         block_phone=ev.phone, dtv_priority="HIGH", ticket="NGHI_CHIEM_SIM")
     if o is Outcome.DO_NOT_CALL:
         return Decision(Action.STOP, "S4",

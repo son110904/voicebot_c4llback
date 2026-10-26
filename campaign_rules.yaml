@@ -12,7 +12,7 @@ hotline: "1900558868"
 # Pre-notification: gửi push qua iPay TRƯỚC khi bot gọi, để KH biết số sắp gọi là của ngân hàng.
 # Nếu bỏ qua được qua app (KH xác thực luôn trên iPay) thì khỏi gọi.
 pre_call:
-  push_lead_minutes: 2         # push iPay bao lâu trước cuộc gọi đầu tiên (P2/P3). P1 bỏ qua delay.
+  push_lead_minutes: 5         # push iPay bao lâu trước cuộc gọi đầu tiên (P2/P3). P1 bỏ qua delay.
   short_hangup_max_per_case: 2 # KH tắt máy sớm (< 5s) tối đa n lần. Lần n+1 không gọi nữa, chỉ ZNS + ĐTV.
 
 alt_phone:                     # số dự phòng
@@ -32,7 +32,7 @@ urgency:
 
 levels:
   P1:                          # thẻ còn mở + GD được cấp phép / số tiền lớn / nhiều cảnh báo
-    max_calls_24h: 5           # case khẩn có rule riêng
+    max_calls_24h: 3           # giảm từ 5 xuống 3 — chuẩn FCC (3 lần/3 ngày); VN chưa có quy định rõ nhưng tránh quấy rối KH
     min_gap_minutes: 5
     window: "00:00-24:00"
     max_days: 1
@@ -73,9 +73,20 @@ outcomes:
 
 # Kênh phụ: Zalo ZNS thay cho SMS (bank chưa cấp SMS gateway cho dự án này).
 # ZNS yêu cầu template được Zalo duyệt trước khi deploy thật -> submit mẫu riêng cho PRODUCTION.
+# QUAN TRỌNG: Zalo có thể từ chối duyệt template chứa SĐT dạng text.
+# Khi submit template lên Zalo: dùng CTA button thay vì ghi SĐT trong nội dung:
+#   - Nút "Gọi hotline" → tel:1900558868
+#   - Nút "Mở iPay"     → deep link app VietinBank iPay (xác nhận với team iPay)
 zns:
   max_per_case: 3
   templates:                   # KHÔNG được chứa chi tiết giao dịch - code chặn dấu { }
-    pre_call: "VietinBank sắp gọi anh/chị trong 2 phút về giao dịch thẻ cần xác thực. Số gọi: 1900558868. Hoặc anh/chị có thể mở app VietinBank iPay để tự xác thực nhanh."
-    contact: "VietinBank đã cố liên hệ anh/chị về giao dịch thẻ cần xác thực. Vui lòng mở app VietinBank iPay để xác thực nhanh, hoặc gọi 1900558868."
-    final: "VietinBank không liên hệ được anh/chị về giao dịch thẻ. Vui lòng mở app VietinBank iPay hoặc gọi 1900558868 để được hỗ trợ."
+    pre_call: "VietinBank sắp gọi anh/chị trong 5 phút về giao dịch thẻ cần xác thực. Hoặc anh/chị có thể mở app VietinBank iPay để tự xác thực nhanh."
+    contact: "VietinBank đã cố liên hệ anh/chị về giao dịch thẻ cần xác thực. Vui lòng mở app VietinBank iPay để xác thực, hoặc bấm nút bên dưới để gọi hotline."
+    final: "VietinBank không liên hệ được anh/chị về giao dịch thẻ. Vui lòng mở app VietinBank iPay hoặc bấm nút bên dưới để được hỗ trợ."
+
+# Opt-out: chuẩn quốc tế (TCPA/FCC) yêu cầu cuộc gọi tự động phải cho KH chọn
+# dừng nhận cuộc gọi hoặc chuyển người thật ngay từ đầu cuộc gọi.
+# Bot PHẢI đọc câu opt-out này SAU khi xác thực danh tính KH, TRƯỚC khi vào nội dung xác thực GD.
+# Khi KH chọn opt-out: LLM gán nhãn DO_NOT_CALL hoặc NEED_HUMAN -> rule engine xử lý tương ứng.
+call_script:
+  opt_out_prompt: "Nếu anh/chị không muốn nhận cuộc gọi tự động, vui lòng nói 'chuyển người thật' hoặc bấm phím 0 để được kết nối với nhân viên."

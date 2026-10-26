@@ -23,7 +23,7 @@ class ConcurrentUpdateError(RuntimeError):
 @contextmanager
 def transaction(conn: Conn) -> Iterator[Conn]:
     """BEGIN giữ khóa ghi -> 2 worker không cùng đọc-rồi-ghi 1 case.
-    SQLite dùng BEGIN IMMEDIATE; Postgres dùng BEGIN (xem driver.py)."""
+    Postgres dùng BEGIN (xem driver.py)."""
     conn.begin()
     try:
         yield conn
@@ -275,7 +275,7 @@ def next_due(conn: Conn) -> str | None:
     return r["t"]
 
 
-# sms_log / outbox
+# zns_log / outbox
 
 def insert_zns(conn: Conn, case_id: str, decision_id: int, phone: str, template: str, body: str,
                now: datetime) -> None:
