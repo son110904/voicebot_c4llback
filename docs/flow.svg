@@ -74,7 +74,7 @@
   <text class="ts text-gray" x="415" y="218" text-anchor="middle" dominant-baseline="central">zns_log</text>
   <line x1="342" y1="135" x2="378" y2="195" class="leader" marker-end="url(#arrow)"/>
 
-  <!-- scheduler.tick -->
+  <!-- Nhận lịch giới hạn -->
   <rect class="fill-purple" x="182" y="250" width="140" height="44" rx="8"/>
   <text class="th text-purple" x="252" y="272" text-anchor="middle" dominant-baseline="central">scheduler.tick</text>
   <line x1="252" y1="294" x2="252" y2="320" class="arr" marker-end="url(#arrow)"/>
