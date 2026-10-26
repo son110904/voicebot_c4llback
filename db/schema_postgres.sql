@@ -114,6 +114,10 @@ CREATE TABLE IF NOT EXISTS zns_log (
     delivered_at   TEXT,
     read_at        TEXT
 );
+-- Migration: cột ZNS tracking thêm sau khi bảng đã tồn tại
+ALTER TABLE zns_log ADD COLUMN IF NOT EXISTS gateway_msg_id TEXT;
+ALTER TABLE zns_log ADD COLUMN IF NOT EXISTS delivered_at TEXT;
+ALTER TABLE zns_log ADD COLUMN IF NOT EXISTS read_at TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_zns_gateway ON zns_log (gateway_msg_id) WHERE gateway_msg_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS outbox (
