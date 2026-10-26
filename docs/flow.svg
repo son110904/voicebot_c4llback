@@ -1,9 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="680" viewBox="0 0 680 920">
+<svg xmlns="http://www.w3.org/2000/svg" width="720" viewBox="0 0 720 1180">
   <style>
     text { font-family: system-ui, -apple-system, sans-serif; }
     .th { font-size: 14px; font-weight: 500; }
     .ts { font-size: 12px; font-weight: 400; }
-    /* light mode defaults */
     .fill-teal  { fill: #E1F5EE; stroke: #0F6E56; }
     .text-teal  { fill: #085041; }
     .fill-purple { fill: #EEEDFE; stroke: #534AB7; }
@@ -46,118 +45,169 @@
     </marker>
   </defs>
 
-  <!-- Main system boundary -->
-  <rect x="115" y="20" width="340" height="840" rx="16" fill="none" class="border-dash" opacity="0.5"/>
-  <text class="th text-main" x="285" y="46" text-anchor="middle">Hệ thống voicebot gọi lại</text>
+  <!-- ======== SYSTEM BOUNDARY ======== -->
+  <rect x="100" y="20" width="380" height="1140" rx="16" fill="none" class="border-dash" opacity="0.5"/>
+  <text class="th text-main" x="290" y="46" text-anchor="middle">Hệ thống voicebot gọi lại</text>
 
-  <!-- External: TWO/TWFA -->
-  <rect class="fill-coral" x="22" y="100" width="82" height="56" rx="8"/>
-  <text class="th text-coral" x="63" y="122" text-anchor="middle" dominant-baseline="central">Phát hiện</text>
-  <text class="ts text-coral" x="63" y="140" text-anchor="middle" dominant-baseline="central">gian lận</text>
-  <text class="ts text-sub" x="133" y="125" text-anchor="middle">cảnh báo</text>
-  <line x1="104" y1="128" x2="160" y2="128" class="arr" marker-end="url(#arrow)"/>
+  <!-- ======== 1. ALERT INGESTION ======== -->
+  <!-- External: phát hiện gian lận -->
+  <rect class="fill-coral" x="12" y="80" width="82" height="56" rx="8"/>
+  <text class="th text-coral" x="53" y="102" text-anchor="middle" dominant-baseline="central">Phát hiện</text>
+  <text class="ts text-coral" x="53" y="120" text-anchor="middle" dominant-baseline="central">gian lận</text>
+  <text class="ts text-sub" x="123" y="105" text-anchor="middle">cảnh báo</text>
+  <line x1="94" y1="108" x2="150" y2="108" class="arr" marker-end="url(#arrow)"/>
 
   <!-- ingest_alert -->
-  <rect class="fill-teal" x="162" y="100" width="180" height="56" rx="8"/>
-  <text class="th text-teal" x="252" y="122" text-anchor="middle" dominant-baseline="central">Nhận cảnh báo</text>
-  <text class="ts text-teal" x="252" y="140" text-anchor="middle" dominant-baseline="central">tạo hoặc gộp case</text>
-  <line x1="252" y1="156" x2="252" y2="180" class="arr" marker-end="url(#arrow)"/>
-
-  <!-- push iPay -->
-  <rect class="fill-amber" x="182" y="182" width="140" height="40" rx="8"/>
-  <text class="th text-amber" x="252" y="202" text-anchor="middle" dominant-baseline="central">Báo trước qua iPay</text>
-  <line x1="252" y1="222" x2="252" y2="248" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-teal" x="152" y="80" width="190" height="56" rx="8"/>
+  <text class="th text-teal" x="247" y="100" text-anchor="middle" dominant-baseline="central">Nhận cảnh báo</text>
+  <text class="ts text-teal" x="247" y="118" text-anchor="middle" dominant-baseline="central">trùng? gộp? tạo case mới?</text>
 
   <!-- Postgres DB -->
-  <rect class="fill-gray" x="380" y="180" width="70" height="56" rx="8"/>
-  <text class="th text-gray" x="415" y="200" text-anchor="middle" dominant-baseline="central">CSDL</text>
-  <text class="ts text-gray" x="415" y="218" text-anchor="middle" dominant-baseline="central">Postgres</text>
-  <line x1="342" y1="135" x2="378" y2="195" class="leader" marker-end="url(#arrow)"/>
+  <rect class="fill-gray" x="400" y="80" width="70" height="56" rx="8"/>
+  <text class="th text-gray" x="435" y="100" text-anchor="middle" dominant-baseline="central">CSDL</text>
+  <text class="ts text-gray" x="435" y="118" text-anchor="middle" dominant-baseline="central">Postgres</text>
+  <line x1="342" y1="108" x2="398" y2="108" class="leader" marker-end="url(#arrow)"/>
 
-  <!-- Nhận lịch giới hạn -->
-  <rect class="fill-purple" x="182" y="250" width="150" height="44" rx="8"/>
-  <text class="th text-purple" x="256" y="272" text-anchor="middle" dominant-baseline="central">Lấy cuộc cần gọi</text>
-  <line x1="252" y1="294" x2="252" y2="320" class="arr" marker-end="url(#arrow)"/>
+  <!-- push iPay -->
+  <line x1="247" y1="136" x2="247" y2="162" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-amber" x="177" y="164" width="140" height="40" rx="8"/>
+  <text class="th text-amber" x="247" y="184" text-anchor="middle" dominant-baseline="central">Push iPay báo trước</text>
+
+  <!-- ======== 2. P1 BYPASS DECISION ======== -->
+  <line x1="247" y1="204" x2="247" y2="232" class="arr" marker-end="url(#arrow)"/>
+  <polygon points="247,234 310,260 247,286 184,260" fill="none" class="border"/>
+  <text class="ts text-main" x="247" y="264" text-anchor="middle" dominant-baseline="central">P1 gấp?</text>
+
+  <!-- P1 YES: bypass scheduler, go directly to dial -->
+  <text class="ts text-sub" x="98" y="256">P1 bypass</text>
+  <line x1="184" y1="260" x2="80" y2="260" class="arr"/>
+  <line x1="80" y1="260" x2="80" y2="690" class="arr"/>
+  <line x1="80" y1="690" x2="170" y2="690" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- P2/P3: create schedule, enter scheduler loop -->
+  <text class="ts text-sub" x="316" y="278">P2/P3</text>
+  <line x1="247" y1="286" x2="247" y2="320" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- ======== 3. SCHEDULER LOOP ======== -->
+  <rect x="120" y="322" width="330" height="338" rx="12" fill="none" class="border-dash" opacity="0.4"/>
+  <text class="ts text-sub" x="285" y="342" text-anchor="middle">Scheduler loop (mỗi 10s hoặc tới hạn)</text>
+
+  <!-- claim_due_calls -->
+  <rect class="fill-purple" x="182" y="354" width="150" height="40" rx="8"/>
+  <text class="th text-purple" x="257" y="374" text-anchor="middle" dominant-baseline="central">Nhận lịch gọi tới hạn</text>
+  <line x1="257" y1="394" x2="257" y2="416" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- card_checker (NEW) -->
+  <rect class="fill-amber" x="172" y="418" width="170" height="44" rx="8"/>
+  <text class="th text-amber" x="257" y="434" text-anchor="middle" dominant-baseline="central">Kiểm tra thẻ real-time</text>
+  <text class="ts text-amber" x="257" y="452" text-anchor="middle" dominant-baseline="central">API core banking / iPay</text>
+
+  <!-- card blocked? → close case -->
+  <line x1="342" y1="440" x2="396" y2="440" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-gray" x="398" y="424" width="100" height="32" rx="6"/>
+  <text class="ts text-gray" x="448" y="442" text-anchor="middle" dominant-baseline="central">Đóng case</text>
+  <text class="ts text-sub" x="536" y="442">thẻ đã khóa</text>
+
+  <line x1="257" y1="462" x2="257" y2="482" class="arr" marker-end="url(#arrow)"/>
 
   <!-- pre_dial_check -->
-  <rect class="fill-teal" x="182" y="322" width="140" height="56" rx="8"/>
-  <text class="th text-teal" x="252" y="342" text-anchor="middle" dominant-baseline="central">Kiểm tra trước gọi</text>
-  <text class="ts text-teal" x="252" y="360" text-anchor="middle" dominant-baseline="central">case mở? đúng giờ?</text>
-  <text class="ts text-sub" x="215" y="396" text-anchor="middle">Được gọi</text>
-  <line x1="252" y1="378" x2="252" y2="410" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-coral" x="172" y="484" width="170" height="56" rx="8"/>
+  <text class="th text-coral" x="257" y="504" text-anchor="middle" dominant-baseline="central">Kiểm tra trước gọi</text>
+  <text class="ts text-coral" x="257" y="522" text-anchor="middle" dominant-baseline="central">giờ? lượt? ĐTV online?</text>
 
-  <!-- dialer -->
-  <rect class="fill-purple" x="182" y="412" width="140" height="44" rx="8"/>
-  <text class="th text-purple" x="252" y="434" text-anchor="middle" dominant-baseline="central">Quay số qua tổng đài</text>
+  <!-- pre_dial diamond -->
+  <line x1="257" y1="540" x2="257" y2="564" class="arr" marker-end="url(#arrow)"/>
+  <polygon points="257,566 320,592 257,618 194,592" fill="none" class="border"/>
+  <text class="ts text-main" x="257" y="596" text-anchor="middle" dominant-baseline="central">DIAL_NOW?</text>
+
+  <!-- No: reschedule → loop back -->
+  <text class="ts text-sub" x="340" y="586">hoãn</text>
+  <line x1="320" y1="592" x2="430" y2="592" class="arr"/>
+  <line x1="430" y1="592" x2="430" y2="370" class="arr"/>
+  <line x1="430" y1="370" x2="334" y2="370" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- Yes: proceed to dial -->
+  <text class="ts text-sub" x="230" y="636">gọi</text>
+  <line x1="257" y1="618" x2="257" y2="660" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- ======== 4. DIALING ======== -->
+  <!-- dialer (P1 bypass merges here) -->
+  <rect class="fill-purple" x="172" y="662" width="170" height="44" rx="8"/>
+  <text class="th text-purple" x="257" y="684" text-anchor="middle" dominant-baseline="central">Quay số qua tổng đài</text>
 
   <!-- SIP trunk to KH -->
-  <text class="ts text-sub" x="395" y="430" text-anchor="start">đường dây</text>
-  <line x1="322" y1="434" x2="450" y2="434" class="arr" marker-end="url(#arrow)"/>
-  <rect class="fill-gray" x="452" y="412" width="52" height="44" rx="8"/>
-  <text class="th text-gray" x="478" y="434" text-anchor="middle" dominant-baseline="central">Khách</text>
-  <line x1="252" y1="456" x2="252" y2="482" class="arr" marker-end="url(#arrow)"/>
+  <text class="ts text-sub" x="415" y="680" text-anchor="start">đường dây</text>
+  <line x1="342" y1="684" x2="480" y2="684" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-gray" x="482" y="662" width="52" height="44" rx="8"/>
+  <text class="th text-gray" x="508" y="684" text-anchor="middle" dominant-baseline="central">Khách</text>
 
-  <!-- call_status -->
-  <rect class="fill-gray" x="192" y="484" width="120" height="40" rx="8"/>
-  <text class="ts text-gray" x="252" y="504" text-anchor="middle" dominant-baseline="central">Trạng thái cuộc gọi</text>
-  <line x1="252" y1="524" x2="252" y2="544" class="arr" marker-end="url(#arrow)"/>
+  <!-- ======== 5. CALL RESULT ======== -->
+  <line x1="257" y1="706" x2="257" y2="730" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-gray" x="197" y="732" width="120" height="36" rx="8"/>
+  <text class="ts text-gray" x="257" y="752" text-anchor="middle" dominant-baseline="central">Trạng thái cuộc gọi</text>
 
-  <!-- có hội thoại? diamond -->
-  <polygon points="252,546 310,570 252,594 194,570" fill="none" class="border"/>
-  <text class="ts text-main" x="252" y="574" text-anchor="middle" dominant-baseline="central">Có hội thoại?</text>
+  <!-- conversation? diamond -->
+  <line x1="257" y1="768" x2="257" y2="790" class="arr" marker-end="url(#arrow)"/>
+  <polygon points="257,792 320,818 257,844 194,818" fill="none" class="border"/>
+  <text class="ts text-main" x="257" y="822" text-anchor="middle" dominant-baseline="central">Có hội thoại?</text>
 
-  <!-- có → LLM -->
-  <text class="ts text-sub" x="340" y="564">có</text>
-  <line x1="310" y1="570" x2="358" y2="570" class="arr" marker-end="url(#arrow)"/>
-  <rect class="fill-amber" x="360" y="550" width="90" height="40" rx="8"/>
-  <text class="ts text-amber" x="405" y="574" text-anchor="middle" dominant-baseline="central">Gán nhãn + che PII</text>
-  <line x1="405" y1="590" x2="405" y2="630" class="leader"/>
-  <line x1="405" y1="630" x2="290" y2="630" class="arr" marker-end="url(#arrow)"/>
+  <!-- yes → LLM -->
+  <text class="ts text-sub" x="340" y="810">có</text>
+  <line x1="320" y1="818" x2="378" y2="818" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-amber" x="380" y="800" width="100" height="36" rx="8"/>
+  <text class="ts text-amber" x="430" y="820" text-anchor="middle" dominant-baseline="central">LLM gán nhãn</text>
+  <line x1="430" y1="836" x2="430" y2="870" class="leader"/>
+  <line x1="430" y1="870" x2="298" y2="870" class="arr" marker-end="url(#arrow)"/>
 
-  <!-- không → record_call_result -->
-  <text class="ts text-sub" x="228" y="610">không</text>
-  <line x1="252" y1="594" x2="252" y2="616" class="arr" marker-end="url(#arrow)"/>
+  <!-- no → record_call_result -->
+  <text class="ts text-sub" x="232" y="860">không</text>
+  <line x1="257" y1="844" x2="257" y2="858" class="arr" marker-end="url(#arrow)"/>
 
   <!-- record_call_result -->
-  <rect class="fill-teal" x="172" y="618" width="160" height="44" rx="8"/>
-  <text class="th text-teal" x="252" y="640" text-anchor="middle" dominant-baseline="central">Ghi kết quả cuộc gọi</text>
-  <line x1="252" y1="662" x2="252" y2="688" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-teal" x="177" y="860" width="160" height="40" rx="8"/>
+  <text class="th text-teal" x="257" y="882" text-anchor="middle" dominant-baseline="central">Ghi kết quả cuộc gọi</text>
+  <line x1="257" y1="900" x2="257" y2="920" class="arr" marker-end="url(#arrow)"/>
 
-  <!-- rules.decide -->
-  <rect class="fill-coral" x="172" y="690" width="160" height="44" rx="8"/>
-  <text class="th text-coral" x="252" y="704" text-anchor="middle" dominant-baseline="central">Quyết định bước tiếp</text>
-  <text class="ts text-coral" x="252" y="722" text-anchor="middle" dominant-baseline="central">6 nhóm kết quả</text>
-  <line x1="252" y1="734" x2="252" y2="760" class="arr" marker-end="url(#arrow)"/>
+  <!-- ======== 6. DECIDE ======== -->
+  <rect class="fill-coral" x="177" y="922" width="160" height="44" rx="8"/>
+  <text class="th text-coral" x="257" y="936" text-anchor="middle" dominant-baseline="central">Quyết định bước tiếp</text>
+  <text class="ts text-coral" x="257" y="954" text-anchor="middle" dominant-baseline="central">6 nhóm kết quả</text>
+
+  <!-- SCHEDULE_CALL loops back to scheduler -->
+  <line x1="177" y1="944" x2="140" y2="944" class="arr"/>
+  <line x1="140" y1="944" x2="140" y2="370" class="arr"/>
+  <line x1="140" y1="370" x2="180" y2="370" class="arr" marker-end="url(#arrow)"/>
+  <text class="ts text-sub" x="136" y="660" text-anchor="end">gọi lại</text>
 
   <!-- outbox -->
-  <rect class="fill-purple" x="202" y="762" width="100" height="40" rx="8"/>
-  <text class="th text-purple" x="252" y="782" text-anchor="middle" dominant-baseline="central">Hàng đợi gửi ra</text>
+  <line x1="257" y1="966" x2="257" y2="992" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-purple" x="207" y="994" width="100" height="36" rx="8"/>
+  <text class="th text-purple" x="257" y="1014" text-anchor="middle" dominant-baseline="central">Outbox</text>
 
-  <!-- Outbox outputs -->
-  <line x1="302" y1="770" x2="460" y2="770" class="arr"/>
-  <line x1="460" y1="770" x2="460" y2="890" class="arr"/>
+  <!-- ======== 7. OUTBOX OUTPUTS ======== -->
+  <line x1="307" y1="1004" x2="500" y2="1004" class="arr"/>
+  <line x1="500" y1="1004" x2="500" y2="1130" class="arr"/>
 
   <!-- PUSH_IPAY -->
-  <line x1="460" y1="780" x2="508" y2="780" class="arr" marker-end="url(#arrow)"/>
-  <rect class="fill-amber" x="510" y="766" width="90" height="28" rx="6"/>
-  <text class="ts text-amber" x="555" y="782" text-anchor="middle" dominant-baseline="central">Thông báo iPay</text>
-  <text class="ts text-sub" x="636" y="782">app KH</text>
+  <line x1="500" y1="1020" x2="538" y2="1020" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-amber" x="540" y="1006" width="100" height="28" rx="6"/>
+  <text class="ts text-amber" x="590" y="1022" text-anchor="middle" dominant-baseline="central">Thông báo iPay</text>
 
   <!-- ZNS -->
-  <line x1="460" y1="808" x2="508" y2="808" class="arr" marker-end="url(#arrow)"/>
-  <rect class="fill-teal" x="510" y="794" width="90" height="28" rx="6"/>
-  <text class="ts text-teal" x="555" y="810" text-anchor="middle" dominant-baseline="central">Tin nhắn Zalo</text>
-  <text class="ts text-sub" x="636" y="810">ZNS</text>
+  <line x1="500" y1="1050" x2="538" y2="1050" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-teal" x="540" y="1036" width="100" height="28" rx="6"/>
+  <text class="ts text-teal" x="590" y="1052" text-anchor="middle" dominant-baseline="central">Tin nhắn Zalo</text>
+  <text class="ts text-sub" x="668" y="1052">ZNS</text>
 
   <!-- DTV_HANDOFF -->
-  <line x1="460" y1="836" x2="508" y2="836" class="arr" marker-end="url(#arrow)"/>
-  <rect class="fill-coral" x="510" y="822" width="90" height="28" rx="6"/>
-  <text class="ts text-coral" x="555" y="838" text-anchor="middle" dominant-baseline="central">Chuyển nhân viên</text>
-  <text class="ts text-sub" x="636" y="838">ĐTV</text>
+  <line x1="500" y1="1080" x2="538" y2="1080" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-coral" x="540" y="1066" width="100" height="28" rx="6"/>
+  <text class="ts text-coral" x="590" y="1082" text-anchor="middle" dominant-baseline="central">Chuyển nhân viên</text>
+  <text class="ts text-sub" x="668" y="1082">ĐTV</text>
 
   <!-- CASE_FINAL -->
-  <line x1="460" y1="864" x2="508" y2="864" class="arr" marker-end="url(#arrow)"/>
-  <rect class="fill-gray" x="510" y="850" width="90" height="28" rx="6"/>
-  <text class="ts text-gray" x="555" y="866" text-anchor="middle" dominant-baseline="central">Đóng case</text>
-  <text class="ts text-sub" x="636" y="866">báo cáo</text>
+  <line x1="500" y1="1110" x2="538" y2="1110" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-gray" x="540" y="1096" width="100" height="28" rx="6"/>
+  <text class="ts text-gray" x="590" y="1112" text-anchor="middle" dominant-baseline="central">Đóng case</text>
+  <text class="ts text-sub" x="668" y="1112">báo cáo</text>
 </svg>

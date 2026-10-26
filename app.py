@@ -151,7 +151,7 @@ def zns_status_webhook():
     conn = db()
     try:
         cfg = load_config()
-        svc = CallbackService(conn, cfg)
+        svc = CallbackService(conn, cfg) #truyen ham checker that vao khi deploy
         found = svc.handle_zns_webhook(data["msg_id"], status, at)
     finally:
         conn.close()

@@ -48,12 +48,12 @@ class Clock:
 _CONN = None
 
 
-def new_svc():
+def new_svc(**kwargs):
     global _CONN
     if _CONN is None:
         _CONN = connect(URL)
     reset(_CONN)
-    return CallbackService(_CONN, load_config(), config_version="sched-test")
+    return CallbackService(_CONN, load_config(), config_version="sched-test", **kwargs)
 
 
 def seed(svc, now, approved=False, blocked=True):
@@ -101,6 +101,47 @@ class P1BypassTest(unittest.TestCase):
             "SELECT outcome FROM call_attempts WHERE case_id = ?",
             (result.case_id,)).fetchone()
         self.assertEqual(row["outcome"], "verified_confirmed")
+
+
+class CardCheckerTest(unittest.TestCase):
+    """kiểm tra thẻ real-time trước khi gọi."""
+
+    def test_card_blocked_via_ipay_closes_case(self):
+        svc = new_svc(card_checker=lambda _ref: False)  # thẻ đã bị khóa
+        clock = Clock(at(22, 9))
+        seed(svc, at(22, 9))
+        s = Scheduler(svc, FakeDialer(), SchedulerConfig(worker_id="w1"), clock=clock)
+        self.assertEqual(s.tick(), 0)  # không gọi vì case đã đóng
+        case = svc.conn.execute("SELECT status FROM cases").fetchone()
+        self.assertEqual(case["status"], "CLOSED")
+        d = svc.conn.execute("SELECT rule_id FROM decisions ORDER BY decision_id DESC").fetchone()
+        self.assertEqual(d["rule_id"], "K5")
+
+    def test_card_still_open_proceeds_normally(self):
+        svc = new_svc(card_checker=lambda _ref: True)  # thẻ vẫn mở
+        clock = Clock(at(22, 9))
+        seed(svc, at(22, 9))
+        s = Scheduler(svc, FakeDialer(DialResult("c1", "No Answer")),
+                      SchedulerConfig(worker_id="w1"), clock=clock)
+        self.assertEqual(s.tick(), 1)  # gọi bình thường
+
+    def test_card_checker_error_still_calls(self):
+        def bad_checker(_ref):
+            raise ConnectionError("core banking timeout")
+        svc = new_svc(card_checker=bad_checker)
+        clock = Clock(at(22, 9))
+        seed(svc, at(22, 9))
+        s = Scheduler(svc, FakeDialer(DialResult("c1", "No Answer")),
+                      SchedulerConfig(worker_id="w1"), clock=clock)
+        self.assertEqual(s.tick(), 1)  # fail-open: gọi thà thừa còn hơn bỏ sót
+
+    def test_no_checker_proceeds_normally(self):
+        svc = new_svc()  # không có card_checker
+        clock = Clock(at(22, 9))
+        seed(svc, at(22, 9))
+        s = Scheduler(svc, FakeDialer(DialResult("c1", "No Answer")),
+                      SchedulerConfig(worker_id="w1"), clock=clock)
+        self.assertEqual(s.tick(), 1)
 
 
 class SchedulerTest(unittest.TestCase):

@@ -10,8 +10,12 @@ hoặc không ghi gì. `now` luôn do bên gọi truyền vào để test/mô ph
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from typing import Callable
+
+log = logging.getLogger("service")
 
 from callback import (
     OUTCOME_GROUP, Action, Alert, Attempt, Case, CaseStatus, Config, Decision, Event, Outcome, Urgency,
@@ -57,13 +61,15 @@ class LlmLabel:
 
 class CallbackService:
     def __init__(self, conn, cfg: Config, config_version: str = "dev",
-                 claim_ttl: timedelta = timedelta(minutes=5), dial_timeout: timedelta = timedelta(minutes=15)):
+                 claim_ttl: timedelta = timedelta(minutes=5), dial_timeout: timedelta = timedelta(minutes=15),
+                 card_checker: Callable[[str], bool] | None = None):
         self.conn = conn
         self.cfg = cfg
         self.tz = cfg.tz
         self.config_version = config_version
         self.claim_ttl = claim_ttl          # worker nhận lịch mà không xử lý trong khoảng này -> nhận lại
         self.dial_timeout = dial_timeout    # đã quay số mà quá khoảng này chưa có kết quả -> coi là lỗi hệ thống
+        self.card_checker = card_checker    # real-time card status từ core banking / iPay (None = không check)
 
     # ------------------------------------------------------------ cảnh báo
 
@@ -140,6 +146,20 @@ class CallbackService:
             if s is None or s["status"] != "CLAIMED":
                 raise ValueError(f"Lịch {schedule_id} không ở trạng thái CLAIMED")
             case, version = repo.get_case(c, s["case_id"], self.tz)
+
+            if self.card_checker is not None and case.card_open:
+                try:
+                    still_open = self.card_checker(case.card_ref)
+                except Exception:
+                    log.exception("card_checker lỗi card_ref=%s, tiếp tục gọi bình thường", case.card_ref)
+                    still_open = True
+                if not still_open:
+                    case = replace(case, card_open=False)
+                    d = Decision(Action.CLOSE, "K5",
+                                 "Thẻ đã bị khóa (KH tự xử lý qua iPay/hotline) — không cần gọi")
+                    self._apply(c, case, version, d, "pre_dial", None, now)
+                    return d
+
             attempts = repo.list_attempts(c, case.case_id, self.tz)
             d = pre_dial_check(case, attempts, s["phone"], now, self.cfg, self._phone_history(c, case, now),
                                appointment=bool(s["appointment"]), dtv_online_count=dtv_online_count)
