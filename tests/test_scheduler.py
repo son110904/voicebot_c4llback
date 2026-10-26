@@ -61,6 +61,48 @@ def seed(svc, now, approved=False, blocked=True):
                            card_blocked=blocked, created_at=now), PRIMARY, now)
 
 
+class P1BypassTest(unittest.TestCase):
+    """P1 DIAL_NOW phải bypass scheduler polling, gọi thẳng."""
+
+    def test_p1_ingest_returns_immediate_call(self):
+        svc = new_svc()
+        now = at(22, 9)
+        alert = Alert("A1", "CARD-1", "KH1", 2_000_000, approved=True,
+                       card_blocked=False, created_at=now)
+        result = svc.ingest_alert(alert, PRIMARY, now)
+        self.assertFalse(result.duplicate)
+        self.assertIsNotNone(result.immediate_call, "P1 DIAL_NOW phải trả immediate_call")
+        self.assertEqual(result.immediate_call.case_id, result.case_id)
+        self.assertEqual(result.immediate_call.phone, PRIMARY)
+
+    def test_p2_ingest_no_immediate_call(self):
+        svc = new_svc()
+        now = at(22, 9)
+        alert = Alert("A2", "CARD-2", "KH2", 2_000_000, approved=False,
+                       card_blocked=True, created_at=now)
+        result = svc.ingest_alert(alert, PRIMARY, now)
+        self.assertIsNone(result.immediate_call, "P2 không được bypass scheduler")
+
+    def test_dial_one_standalone(self):
+        svc = new_svc()
+        now = at(22, 9)
+        alert = Alert("A3", "CARD-3", "KH3", 2_000_000, approved=True,
+                       card_blocked=False, created_at=now)
+        result = svc.ingest_alert(alert, PRIMARY, now)
+        self.assertIsNotNone(result.immediate_call)
+
+        dialer = FakeDialer(DialResult("call-p1", "Completed", answered_seconds=30,
+                                       llm=LlmLabel(Outcome.VERIFIED_CONFIRMED, 0.9)))
+        s = Scheduler(svc, dialer, clock=Clock(now))
+        ok = s.dial_one(result.immediate_call)
+        self.assertTrue(ok)
+        self.assertEqual(dialer.calls, 1)
+        row = svc.conn.execute(
+            "SELECT outcome FROM call_attempts WHERE case_id = ?",
+            (result.case_id,)).fetchone()
+        self.assertEqual(row["outcome"], "verified_confirmed")
+
+
 class SchedulerTest(unittest.TestCase):
     def test_runs_one_call(self):
         svc = new_svc()
@@ -122,7 +164,6 @@ class SchedulerTest(unittest.TestCase):
         s.tick()
         remaining = svc.pending_outbox()
         self.assertTrue(any("gateway down" in (e["last_error"] or "") for e in remaining))
-
 
 if __name__ == "__main__":
     unittest.main()

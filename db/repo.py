@@ -278,9 +278,39 @@ def next_due(conn: Conn) -> str | None:
 # zns_log / outbox
 
 def insert_zns(conn: Conn, case_id: str, decision_id: int, phone: str, template: str, body: str,
-               now: datetime) -> None:
-    conn.execute(f"INSERT INTO zns_log (case_id, decision_id, phone, template, body, created_at) "
-                 f"VALUES ({_marks(6)})", (case_id, decision_id, phone, template, body, ts(now)))
+               now: datetime) -> int:
+    return conn.insert(
+        f"INSERT INTO zns_log (case_id, decision_id, phone, template, body, created_at) "
+        f"VALUES ({_marks(6)})", (case_id, decision_id, phone, template, body, ts(now)),
+        pk="zns_id",
+    )
+
+
+def set_zns_gateway_id(conn: Conn, zns_id: int, gateway_msg_id: str) -> None:
+    conn.execute("UPDATE zns_log SET gateway_msg_id = ? WHERE zns_id = ?", (gateway_msg_id, zns_id))
+
+
+def get_zns_by_gateway_id(conn: Conn, gateway_msg_id: str):
+    return conn.execute("SELECT * FROM zns_log WHERE gateway_msg_id = ?", (gateway_msg_id,)).fetchone()
+
+
+def update_zns_status(conn: Conn, gateway_msg_id: str, delivered_at: datetime | None,
+                      read_at: datetime | None) -> bool:
+    r = conn.execute("SELECT zns_id, delivered_at, read_at FROM zns_log WHERE gateway_msg_id = ?",
+                     (gateway_msg_id,)).fetchone()
+    if r is None:
+        return False
+    new_delivered = ts(delivered_at) if delivered_at else r["delivered_at"]
+    new_read = ts(read_at) if read_at else r["read_at"]
+    conn.execute("UPDATE zns_log SET delivered_at = ?, read_at = ? WHERE zns_id = ?",
+                 (new_delivered, new_read, r["zns_id"]))
+    return True
+
+
+def zns_read_for_case(conn: Conn, case_id: str) -> bool:
+    """KH đã đọc ít nhất 1 ZNS của case này chưa."""
+    return conn.execute("SELECT 1 AS x FROM zns_log WHERE case_id = ? AND read_at IS NOT NULL LIMIT 1",
+                        (case_id,)).fetchone() is not None
 
 
 def insert_outbox(conn: Conn, case_id: str, decision_id: int | None, event_type: str, payload: dict,

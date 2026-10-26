@@ -197,6 +197,8 @@ def _validate(cfg: Config) -> list[str]:
         errs.append("llm_min_confidence phải trong (0, 1]")
     if cfg.per_phone_cap_24h < 1:
         errs.append("per_phone_cap_24h phải >= 1")
+    if cfg.dtv_recheck_minutes < 1:
+        errs.append("dtv_recheck_minutes phải >= 1")
     if cfg.alt_switch_after < 1 or cfg.alt_max_attempts < 0:
         errs.append("cấu hình alt_phone không hợp lệ")
     if cfg.system_retry_max < 0 or cfg.system_backoff_minutes <= 0:

@@ -65,30 +65,36 @@ class Scheduler:
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.dtv_counter = dtv_counter
 
+    def dial_one(self, call: ScheduledCall) -> bool:
+        """Gọi 1 cuộc: pre_dial_check -> quay số -> ghi kết quả. Trả True nếu đã quay số.
+
+        Dùng trực tiếp cho P1 DIAL_NOW bypass scheduler polling, hoặc bên trong tick().
+        """
+        try:
+            dtv = self.dtv_counter() if self.dtv_counter else None
+            d = self.svc.start_call(call.schedule_id, self.clock(), dtv_online_count=dtv)
+        except Exception:
+            log.exception("start_call lỗi schedule %s", call.schedule_id)
+            return False
+        if d.action is not Action.DIAL_NOW:
+            return False
+        try:
+            r = self.dial(call, d)
+            self.svc.record_call_result(
+                call.case_id, r.call_id, d.target_phone, self.clock(), self.clock(),
+                r.pbx_status, sip_code=r.sip_code, answered_seconds=r.answered_seconds,
+                machine_detected=r.machine_detected, verified=r.verified, llm=r.llm,
+            )
+        except Exception:
+            log.exception("dial/record lỗi, chờ recover_lost_calls xử lý")
+        return True
+
     def tick(self) -> int:
         """Chạy 1 vòng. Trả về số cuộc đã quay. Dùng để test và nhịp vòng ngoài."""
         now = self.clock()
         self.svc.recover_lost_calls(now)
-        n = 0
-        for call in self.svc.claim_due_calls(now, self.cfg.worker_id, self.cfg.batch):
-            try:
-                dtv = self.dtv_counter() if self.dtv_counter else None
-                d = self.svc.start_call(call.schedule_id, self.clock(), dtv_online_count=dtv)
-            except Exception:
-                log.exception("start_call lỗi, bỏ qua schedule %s", call.schedule_id)
-                continue
-            if d.action is not Action.DIAL_NOW:
-                continue                   # pre_dial đã tự dời lịch / dừng
-            try:
-                r = self.dial(call, d)
-                self.svc.record_call_result(
-                    call.case_id, r.call_id, d.target_phone, self.clock(), self.clock(),
-                    r.pbx_status, sip_code=r.sip_code, answered_seconds=r.answered_seconds,
-                    machine_detected=r.machine_detected, verified=r.verified, llm=r.llm,
-                )
-            except Exception:
-                log.exception("dial/record lỗi, chờ recover_lost_calls xử lý")
-            n += 1
+        n = sum(1 for call in self.svc.claim_due_calls(now, self.cfg.worker_id, self.cfg.batch)
+                if self.dial_one(call))
         if self.dispatcher is not None:
             self._dispatch(now)
         return n

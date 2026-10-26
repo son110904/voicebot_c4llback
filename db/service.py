@@ -36,6 +36,7 @@ class IngestResult:
     merged: bool
     duplicate: bool
     decision: Decision | None
+    immediate_call: ScheduledCall | None = None
 
 
 @dataclass(frozen=True)
@@ -109,8 +110,12 @@ class CallbackService:
             if d.action is Action.DIAL_NOW and lead > 0:
                 # Lùi lịch gọi để KH có thời gian xem push iPay
                 d = replace(d, action=Action.SCHEDULE_CALL, next_call_at=call_at)
-            self._apply(c, case, 0, d, "alert", None, now)
-            return IngestResult(case.case_id, merged=False, duplicate=False, decision=d)
+            _did, sched_id = self._apply(c, case, 0, d, "alert", None, now)
+            immediate = None
+            if case.urgency is Urgency.P1 and d.action is Action.DIAL_NOW and sched_id is not None:
+                immediate = ScheduledCall(sched_id, case.case_id, d.target_phone, now, d.appointment)
+            return IngestResult(case.case_id, merged=False, duplicate=False, decision=d,
+                                immediate_call=immediate)
 
     def _push_ipay(self, c, case: Case, now: datetime) -> None:
         """Ghi event PUSH_IPAY vào outbox để team iPay/core bank gửi notification tới app KH."""
@@ -254,6 +259,27 @@ class CallbackService:
             repo.insert_decision(c, case_id, None, "external", d, self.config_version, now)
             repo.cancel_waiting(c, case_id, now)
 
+    # ------------------------------------------------------------ ZNS tracking
+
+    def link_zns_gateway(self, case_id: str, decision_id: int, gateway_msg_id: str) -> None:
+        """Sau khi dispatcher gửi ZNS thành công, ghi lại gateway_msg_id để nhận webhook sau."""
+        with repo.transaction(self.conn) as c:
+            r = c.execute("SELECT zns_id FROM zns_log WHERE case_id = ? AND decision_id = ?",
+                          (case_id, decision_id)).fetchone()
+            if r:
+                repo.set_zns_gateway_id(c, r["zns_id"], gateway_msg_id)
+
+    def handle_zns_webhook(self, gateway_msg_id: str, status: str, at: datetime) -> bool:
+        """Nhận callback từ ZNS gateway. status: 'delivered' hoặc 'read'. Trả True nếu tìm thấy ZNS."""
+        with repo.transaction(self.conn) as c:
+            delivered_at = at if status == "delivered" else None
+            read_at = at if status == "read" else None
+            return repo.update_zns_status(c, gateway_msg_id, delivered_at, read_at)
+
+    def zns_read_for_case(self, case_id: str) -> bool:
+        """KH đã đọc ZNS nào của case này chưa."""
+        return repo.zns_read_for_case(self.conn, case_id)
+
     # ------------------------------------------------------------ đọc / outbox
 
     def next_due_at(self) -> datetime | None:
@@ -278,23 +304,27 @@ class CallbackService:
         return repo.phone_history(c, phones, case.case_id, now - self.cfg.rolling_window, self.tz)
 
     def _apply(self, c, case: Case, version: int, d: Decision, kind: str, attempt_id: int | None,
-               now: datetime, reschedule: bool = True, handoff_context: dict | None = None) -> int:
-        """Ghi hệ quả của 1 quyết định: case, log quyết định, lịch, ZNS, outbox."""
+               now: datetime, reschedule: bool = True, handoff_context: dict | None = None) -> tuple[int, int | None]:
+        """Ghi hệ quả của 1 quyết định: case, log quyết định, lịch, ZNS, outbox.
+
+        Trả (decision_id, schedule_id hoặc None).
+        """
         new = apply_decision(case, d)
         repo.update_case(c, new, version, now)
         did = repo.insert_decision(c, case.case_id, attempt_id, kind, d, self.config_version, now)
 
+        sched_id = None
         if reschedule:
             repo.cancel_waiting(c, case.case_id, now)
-            # DIAL_NOW lúc nhận cảnh báo = "gọi ngay" -> xếp lịch tới hạn luôn cho scheduler nhận
             if d.action is Action.SCHEDULE_CALL or (d.action is Action.DIAL_NOW and kind != "pre_dial"):
-                repo.insert_schedule(c, case.case_id, d.next_call_at or now, d.target_phone, d.appointment, did, now)
+                sched_id = repo.insert_schedule(c, case.case_id, d.next_call_at or now, d.target_phone,
+                                                d.appointment, did, now)
 
         if d.zns_template:
             body = self.cfg.zns_templates[d.zns_template]
-            repo.insert_zns(c, case.case_id, did, d.zns_to, d.zns_template, body, now)
+            zns_id = repo.insert_zns(c, case.case_id, did, d.zns_to, d.zns_template, body, now)
             repo.insert_outbox(c, case.case_id, did, "ZNS", {"to": d.zns_to, "template": d.zns_template,
-                                                              "body": body}, now)
+                                                              "body": body, "zns_id": zns_id}, now)
         if d.action is Action.HAND_TO_DTV or d.dtv_priority:
             payload = handoff_context or {
                 "case_id": case.case_id, "customer_id": case.customer_id, "card_ref": case.card_ref,
@@ -307,4 +337,4 @@ class CallbackService:
             repo.insert_outbox(c, case.case_id, did, "CASE_FINAL",
                                {"status": new.status.value, "ticket": d.ticket, "rule_id": d.rule_id,
                                 "reason": d.reason}, now)
-        return did
+        return did, sched_id

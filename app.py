@@ -7,10 +7,13 @@ Chạy: CALLBACK_DB_URL=postgresql://... python app.py
 """
 import json
 import os
+from datetime import datetime, timezone
 
-from flask import Flask, abort, render_template
+from flask import Flask, abort, jsonify, render_template, request
 
+from callback.config import load_config
 from db import connect as db_connect
+from db.service import CallbackService
 
 DB_URL = os.environ.get("CALLBACK_DB_URL", "postgresql://postgres:cb@localhost:5432/callback")
 
@@ -95,6 +98,66 @@ def case(case_id):
     blocked = json.loads(c["blocked_phones"])
     return render_template("case.html", c=c, alerts=alerts, attempts=attempts, decisions=decisions,
                            zns=zns, outbox=outbox, schedule=schedule, blocked=blocked)
+
+
+@app.route("/customer/<customer_id>")
+def customer_journey(customer_id):
+    conn = db()
+    try:
+        cases = list(conn.execute(
+            "SELECT * FROM cases WHERE customer_id = ? ORDER BY created_at DESC",
+            (customer_id,)))
+        if not cases:
+            abort(404)
+        case_ids = tuple(c["case_id"] for c in cases)
+        marks = ", ".join("?" * len(case_ids))
+
+        attempts = list(conn.execute(
+            f"SELECT * FROM call_attempts WHERE case_id IN ({marks}) ORDER BY started_at",
+            case_ids))
+        decisions = list(conn.execute(
+            f"SELECT d.*, l.label AS llm_label, l.confidence AS llm_conf "
+            f"FROM decisions d LEFT JOIN llm_labels l ON l.attempt_id = d.attempt_id "
+            f"WHERE d.case_id IN ({marks}) ORDER BY d.decided_at, d.decision_id",
+            case_ids))
+        zns = list(conn.execute(
+            f"SELECT * FROM zns_log WHERE case_id IN ({marks}) ORDER BY created_at",
+            case_ids))
+    finally:
+        conn.close()
+
+    decisions = [{**dict(d), "detail_parsed": json.loads(d["detail"])} for d in decisions]
+    return render_template("customer.html", customer_id=customer_id, cases=cases,
+                           decisions=decisions, attempts=attempts, zns=zns)
+
+
+@app.route("/api/webhook/zns-status", methods=["POST"])
+def zns_status_webhook():
+    """Nhận callback từ ZNS gateway khi KH nhận/đọc ZNS.
+
+    Body JSON: {"msg_id": "...", "status": "delivered"|"read", "timestamp": "ISO8601"}
+    """
+    data = request.get_json(silent=True)
+    if not data or "msg_id" not in data or "status" not in data:
+        return jsonify({"error": "missing msg_id or status"}), 400
+    status = data["status"]
+    if status not in ("delivered", "read"):
+        return jsonify({"error": "status must be 'delivered' or 'read'"}), 400
+    ts_str = data.get("timestamp")
+    at = datetime.fromisoformat(ts_str) if ts_str else datetime.now(timezone.utc)
+    if at.utcoffset() is None:
+        at = at.replace(tzinfo=timezone.utc)
+
+    conn = db()
+    try:
+        cfg = load_config()
+        svc = CallbackService(conn, cfg)
+        found = svc.handle_zns_webhook(data["msg_id"], status, at)
+    finally:
+        conn.close()
+    if not found:
+        return jsonify({"error": "unknown msg_id"}), 404
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

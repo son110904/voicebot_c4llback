@@ -103,14 +103,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_schedule_active ON schedule (case_id)
 CREATE INDEX IF NOT EXISTS ix_schedule_due ON schedule (status, due_at);
 
 CREATE TABLE IF NOT EXISTS zns_log (
-    zns_id      BIGSERIAL PRIMARY KEY,
-    case_id     TEXT NOT NULL REFERENCES cases (case_id),
-    decision_id BIGINT NOT NULL UNIQUE REFERENCES decisions (decision_id),
-    phone       TEXT NOT NULL,
-    template    TEXT NOT NULL,
-    body        TEXT NOT NULL,
-    created_at  TEXT NOT NULL
+    zns_id         BIGSERIAL PRIMARY KEY,
+    case_id        TEXT NOT NULL REFERENCES cases (case_id),
+    decision_id    BIGINT NOT NULL UNIQUE REFERENCES decisions (decision_id),
+    phone          TEXT NOT NULL,
+    template       TEXT NOT NULL,
+    body           TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    gateway_msg_id TEXT,
+    delivered_at   TEXT,
+    read_at        TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS ux_zns_gateway ON zns_log (gateway_msg_id) WHERE gateway_msg_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS outbox (
     event_id    BIGSERIAL PRIMARY KEY,

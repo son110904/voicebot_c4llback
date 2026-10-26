@@ -256,5 +256,68 @@ class RepoTest(Base):
         self.assertEqual(self.svc.pending_outbox(), [])
 
 
+class ZnsTrackingTest(Base):
+    def _send_zns_and_get_outbox(self):
+        """Helper: tạo case P1 -> gọi -> no answer -> ZNS được gửi. Trả (case_id, zns_outbox_event)."""
+        self.svc.ingest_alert(p1_alert(), PRIMARY, at(21, 9))
+        self.dial(at(21, 9))
+        self.call("c1", at(21, 9), "No Answer")
+        evts = [e for e in self.svc.pending_outbox() if e["event_type"] == "ZNS"]
+        self.assertEqual(len(evts), 1)
+        return "CASE-A1", evts[0]
+
+    def test_zns_outbox_includes_zns_id(self):
+        _, ev = self._send_zns_and_get_outbox()
+        payload = json.loads(ev["payload"])
+        self.assertIn("zns_id", payload)
+        self.assertIsInstance(payload["zns_id"], int)
+
+    def test_link_gateway_id_and_lookup(self):
+        case_id, ev = self._send_zns_and_get_outbox()
+        payload = json.loads(ev["payload"])
+        self.svc.link_zns_gateway(case_id, ev["decision_id"], "gw-msg-001")
+        r = repo.get_zns_by_gateway_id(self.conn, "gw-msg-001")
+        self.assertIsNotNone(r)
+        self.assertEqual(r["zns_id"], payload["zns_id"])
+
+    def test_webhook_delivered(self):
+        case_id, ev = self._send_zns_and_get_outbox()
+        self.svc.link_zns_gateway(case_id, ev["decision_id"], "gw-msg-002")
+        ok = self.svc.handle_zns_webhook("gw-msg-002", "delivered", at(21, 9, 3))
+        self.assertTrue(ok)
+        r = repo.get_zns_by_gateway_id(self.conn, "gw-msg-002")
+        self.assertIsNotNone(r["delivered_at"])
+        self.assertIsNone(r["read_at"])
+
+    def test_webhook_read(self):
+        case_id, ev = self._send_zns_and_get_outbox()
+        self.svc.link_zns_gateway(case_id, ev["decision_id"], "gw-msg-003")
+        self.svc.handle_zns_webhook("gw-msg-003", "delivered", at(21, 9, 3))
+        self.svc.handle_zns_webhook("gw-msg-003", "read", at(21, 9, 5))
+        r = repo.get_zns_by_gateway_id(self.conn, "gw-msg-003")
+        self.assertIsNotNone(r["delivered_at"])
+        self.assertIsNotNone(r["read_at"])
+
+    def test_zns_read_for_case(self):
+        case_id, ev = self._send_zns_and_get_outbox()
+        self.assertFalse(self.svc.zns_read_for_case(case_id))
+        self.svc.link_zns_gateway(case_id, ev["decision_id"], "gw-msg-004")
+        self.svc.handle_zns_webhook("gw-msg-004", "read", at(21, 9, 5))
+        self.assertTrue(self.svc.zns_read_for_case(case_id))
+
+    def test_webhook_unknown_msg_id_returns_false(self):
+        ok = self.svc.handle_zns_webhook("nonexistent", "delivered", at(21, 9))
+        self.assertFalse(ok)
+
+    def test_webhook_read_without_delivered_first(self):
+        case_id, ev = self._send_zns_and_get_outbox()
+        self.svc.link_zns_gateway(case_id, ev["decision_id"], "gw-msg-005")
+        ok = self.svc.handle_zns_webhook("gw-msg-005", "read", at(21, 9, 5))
+        self.assertTrue(ok)
+        r = repo.get_zns_by_gateway_id(self.conn, "gw-msg-005")
+        self.assertIsNone(r["delivered_at"])
+        self.assertIsNotNone(r["read_at"])
+
+
 if __name__ == "__main__":
     unittest.main()

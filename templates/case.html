@@ -13,7 +13,7 @@
 <div class="quick">
   <div class="box">
     <div class="k">Khách hàng</div>
-    <div class="v">{{ c.customer_id }}</div>
+    <div class="v"><a href="/customer/{{ c.customer_id }}" style="color: var(--retry); text-decoration: none;">{{ c.customer_id }}</a></div>
     <div class="muted">{{ c.card_ref }}</div>
   </div>
   <div class="box">
