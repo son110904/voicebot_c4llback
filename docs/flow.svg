@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" viewBox="0 0 680 920">
+  <style>
+    text { font-family: system-ui, -apple-system, sans-serif; }
+    .th { font-size: 14px; font-weight: 500; }
+    .ts { font-size: 12px; font-weight: 400; }
+    /* light mode defaults */
+    .fill-teal  { fill: #E1F5EE; stroke: #0F6E56; }
+    .text-teal  { fill: #085041; }
+    .fill-purple { fill: #EEEDFE; stroke: #534AB7; }
+    .text-purple { fill: #3C3489; }
+    .fill-coral { fill: #FAECE7; stroke: #993C1D; }
+    .text-coral { fill: #712B13; }
+    .fill-amber { fill: #FAEEDA; stroke: #854F0B; }
+    .text-amber { fill: #633806; }
+    .fill-gray  { fill: #F1EFE8; stroke: #5F5E5A; }
+    .text-gray  { fill: #444441; }
+    .border { stroke: #5F5E5A; }
+    .border-dash { stroke: #5F5E5A; stroke-dasharray: 6 4; }
+    .text-main { fill: #2C2C2A; }
+    .text-sub  { fill: #5F5E5A; }
+    .arr { stroke: #5F5E5A; stroke-width: 1.5; }
+    .leader { stroke: #5F5E5A; stroke-width: 0.5; stroke-dasharray: 4 3; }
+    rect { stroke-width: 0.5; }
+    @media (prefers-color-scheme: dark) {
+      .fill-teal  { fill: #085041; stroke: #5DCAA5; }
+      .text-teal  { fill: #9FE1CB; }
+      .fill-purple { fill: #3C3489; stroke: #AFA9EC; }
+      .text-purple { fill: #CECBF6; }
+      .fill-coral { fill: #712B13; stroke: #F0997B; }
+      .text-coral { fill: #F5C4B3; }
+      .fill-amber { fill: #633806; stroke: #FAC775; }
+      .text-amber { fill: #FAC775; }
+      .fill-gray  { fill: #444441; stroke: #B4B2A9; }
+      .text-gray  { fill: #D3D1C7; }
+      .border { stroke: #B4B2A9; }
+      .border-dash { stroke: #B4B2A9; stroke-dasharray: 6 4; }
+      .text-main { fill: #D3D1C7; }
+      .text-sub  { fill: #B4B2A9; }
+      .arr { stroke: #B4B2A9; }
+      .leader { stroke: #B4B2A9; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- Main system boundary -->
+  <rect x="115" y="20" width="340" height="840" rx="16" fill="none" class="border-dash" opacity="0.5"/>
+  <text class="th text-main" x="285" y="46" text-anchor="middle">voicebot_callback</text>
+
+  <!-- External: TWO/TWFA -->
+  <rect class="fill-coral" x="22" y="100" width="82" height="56" rx="8"/>
+  <text class="th text-coral" x="63" y="122" text-anchor="middle" dominant-baseline="central">TWO</text>
+  <text class="ts text-coral" x="63" y="140" text-anchor="middle" dominant-baseline="central">TWFA</text>
+  <text class="ts text-sub" x="133" y="125" text-anchor="middle">cảnh báo</text>
+  <line x1="104" y1="128" x2="160" y2="128" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- ingest_alert -->
+  <rect class="fill-teal" x="162" y="100" width="180" height="56" rx="8"/>
+  <text class="th text-teal" x="252" y="122" text-anchor="middle" dominant-baseline="central">ingest_alert</text>
+  <text class="ts text-teal" x="252" y="140" text-anchor="middle" dominant-baseline="central">tạo / gộp case</text>
+  <line x1="252" y1="156" x2="252" y2="180" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- push iPay -->
+  <rect class="fill-amber" x="182" y="182" width="140" height="40" rx="8"/>
+  <text class="th text-amber" x="252" y="202" text-anchor="middle" dominant-baseline="central">push iPay</text>
+  <line x1="252" y1="222" x2="252" y2="248" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- Postgres DB -->
+  <rect class="fill-gray" x="380" y="180" width="70" height="56" rx="8"/>
+  <text class="th text-gray" x="415" y="200" text-anchor="middle" dominant-baseline="central">Postgres</text>
+  <text class="ts text-gray" x="415" y="218" text-anchor="middle" dominant-baseline="central">zns_log</text>
+  <line x1="342" y1="135" x2="378" y2="195" class="leader" marker-end="url(#arrow)"/>
+
+  <!-- scheduler.tick -->
+  <rect class="fill-purple" x="182" y="250" width="140" height="44" rx="8"/>
+  <text class="th text-purple" x="252" y="272" text-anchor="middle" dominant-baseline="central">scheduler.tick</text>
+  <line x1="252" y1="294" x2="252" y2="320" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- pre_dial_check -->
+  <rect class="fill-teal" x="182" y="322" width="140" height="56" rx="8"/>
+  <text class="th text-teal" x="252" y="342" text-anchor="middle" dominant-baseline="central">pre_dial_check</text>
+  <text class="ts text-teal" x="252" y="360" text-anchor="middle" dominant-baseline="central">mở? khung giờ?</text>
+  <text class="ts text-sub" x="215" y="396" text-anchor="middle">DIAL_NOW</text>
+  <line x1="252" y1="378" x2="252" y2="410" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- dialer -->
+  <rect class="fill-purple" x="182" y="412" width="140" height="44" rx="8"/>
+  <text class="th text-purple" x="252" y="434" text-anchor="middle" dominant-baseline="central">dialer (PBX)</text>
+
+  <!-- SIP trunk to KH -->
+  <text class="ts text-sub" x="395" y="430" text-anchor="start">SIP trunk</text>
+  <line x1="322" y1="434" x2="450" y2="434" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-gray" x="452" y="412" width="52" height="44" rx="8"/>
+  <text class="th text-gray" x="478" y="434" text-anchor="middle" dominant-baseline="central">KH</text>
+  <line x1="252" y1="456" x2="252" y2="482" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- call_status -->
+  <rect class="fill-gray" x="192" y="484" width="120" height="40" rx="8"/>
+  <text class="ts text-gray" x="252" y="504" text-anchor="middle" dominant-baseline="central">call_status</text>
+  <line x1="252" y1="524" x2="252" y2="544" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- có hội thoại? diamond -->
+  <polygon points="252,546 310,570 252,594 194,570" fill="none" class="border"/>
+  <text class="ts text-main" x="252" y="574" text-anchor="middle" dominant-baseline="central">hội thoại?</text>
+
+  <!-- có → LLM -->
+  <text class="ts text-sub" x="340" y="564">có</text>
+  <line x1="310" y1="570" x2="358" y2="570" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-amber" x="360" y="550" width="90" height="40" rx="8"/>
+  <text class="ts text-amber" x="405" y="574" text-anchor="middle" dominant-baseline="central">LLM + PII</text>
+  <line x1="405" y1="590" x2="405" y2="630" class="leader"/>
+  <line x1="405" y1="630" x2="290" y2="630" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- không → record_call_result -->
+  <text class="ts text-sub" x="228" y="610">không</text>
+  <line x1="252" y1="594" x2="252" y2="616" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- record_call_result -->
+  <rect class="fill-teal" x="172" y="618" width="160" height="44" rx="8"/>
+  <text class="th text-teal" x="252" y="640" text-anchor="middle" dominant-baseline="central">record_call_result</text>
+  <line x1="252" y1="662" x2="252" y2="688" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- rules.decide -->
+  <rect class="fill-coral" x="172" y="690" width="160" height="44" rx="8"/>
+  <text class="th text-coral" x="252" y="704" text-anchor="middle" dominant-baseline="central">rules.decide</text>
+  <text class="ts text-coral" x="252" y="722" text-anchor="middle" dominant-baseline="central">6 nhóm outcome</text>
+  <line x1="252" y1="734" x2="252" y2="760" class="arr" marker-end="url(#arrow)"/>
+
+  <!-- outbox -->
+  <rect class="fill-purple" x="202" y="762" width="100" height="40" rx="8"/>
+  <text class="th text-purple" x="252" y="782" text-anchor="middle" dominant-baseline="central">outbox</text>
+
+  <!-- Outbox outputs -->
+  <line x1="302" y1="770" x2="460" y2="770" class="arr"/>
+  <line x1="460" y1="770" x2="460" y2="890" class="arr"/>
+
+  <!-- PUSH_IPAY -->
+  <line x1="460" y1="780" x2="508" y2="780" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-amber" x="510" y="766" width="90" height="28" rx="6"/>
+  <text class="ts text-amber" x="555" y="782" text-anchor="middle" dominant-baseline="central">PUSH_IPAY</text>
+  <text class="ts text-sub" x="625" y="782">iPay app</text>
+
+  <!-- ZNS -->
+  <line x1="460" y1="808" x2="508" y2="808" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-teal" x="510" y="794" width="90" height="28" rx="6"/>
+  <text class="ts text-teal" x="555" y="810" text-anchor="middle" dominant-baseline="central">ZNS</text>
+  <text class="ts text-sub" x="625" y="810">Zalo</text>
+
+  <!-- DTV_HANDOFF -->
+  <line x1="460" y1="836" x2="508" y2="836" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-coral" x="510" y="822" width="90" height="28" rx="6"/>
+  <text class="ts text-coral" x="555" y="838" text-anchor="middle" dominant-baseline="central">DTV_HANDOFF</text>
+  <text class="ts text-sub" x="625" y="838">ĐTV</text>
+
+  <!-- CASE_FINAL -->
+  <line x1="460" y1="864" x2="508" y2="864" class="arr" marker-end="url(#arrow)"/>
+  <rect class="fill-gray" x="510" y="850" width="90" height="28" rx="6"/>
+  <text class="ts text-gray" x="555" y="866" text-anchor="middle" dominant-baseline="central">CASE_FINAL</text>
+  <text class="ts text-sub" x="625" y="866">Vận hành</text>
+</svg>

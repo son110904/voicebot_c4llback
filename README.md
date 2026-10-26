@@ -2,11 +2,15 @@
 
 Bộ campaign rules + DB + LLM labeler + scheduler cho voicebot xác thực giao dịch thẻ nghi gian lận
 
+## Luồng xử lý
+
+![Luồng xử lý voicebot callback](docs/flow.svg)
+
 ## Cấu trúc
 
 ```
 voicebot_callback/
-├── campaign_rules.yaml       # Mọi con số: P1/P2/P3, khoảng chờ, khung giờ, SMS
+├── campaign_rules.yaml       # Mọi con số: P1/P2/P3, khoảng chờ, khung giờ, ZNS
 ├── callback/                 # Rule engine (hàm thuần)
 │   ├── models.py             # Enum + dataclass
 │   ├── config.py             # Đọc & kiểm tra YAML
@@ -53,8 +57,8 @@ docker compose down -v   # tắt + xóa dữ liệu PG
 
 Trên Codespaces, port 5000 sẽ tự được chuyển ra ngoài - click vào tab PORTS,
 copy URL public cho mentor. Mỗi case có timeline các quyết định của rule engine
-(mỗi bước có badge nhóm, lý do, lịch gọi tiếp, SMS, nhãn LLM) và danh sách cuộc
-gọi + outbox + SMS.
+(mỗi bước có badge nhóm, lý do, lịch gọi tiếp, ZNS, nhãn LLM) và danh sách cuộc
+gọi + outbox + ZNS.
 
 ### Dialer tích hợp Freeswitch/Asterisk
 
@@ -71,15 +75,15 @@ Các điểm chính:
 - Đếm số cuộc theo cửa sổ 24h trượt, không theo ngày lịch.
 - Giới hạn trên mỗi số điện thoại (nhiều case cùng số).
 - Lỗi hệ thống không tính lượt; quá 3 lần liên tiếp -> P1 chuyển ĐTV, P2/P3 backoff + báo động vận hành.
-- Nhầm số / xác thực sai nhiều lần -> chặn số, không SMS.
-- SMS KHÔNG được chứa chi tiết giao dịch; config bắt lỗi `{...}` trong mẫu.
+- Nhầm số / xác thực sai nhiều lần -> chặn số, không ZNS.
+- ZNS KHÔNG được chứa chi tiết giao dịch; config bắt lỗi `{...}` trong mẫu.
 - Cảnh báo trùng gộp vào case đang mở, giữ nguyên số lượt đã gọi, nâng mức khẩn nếu cần.
 - Mỗi `call_id` chỉ ghi 1 lần (idempotent); mỗi case tối đa 1 lịch sống (unique index).
 # Bảng từ ngữ
 
 | Danh mục | Giá trị | Ý nghĩa |
 |---|---|---|
-| **Mức khẩn** | `P1` | Thẻ còn mở + GD đã cấp phép / ≥50tr / ≥2 cảnh báo. Tối đa 5 cuộc/24h, 24/7, hạn 1 ngày |
+| **Mức khẩn** | `P1` | Thẻ còn mở + GD đã cấp phép / ≥50tr / ≥2 cảnh báo. Tối đa 3 cuộc/24h, 24/7, hạn 1 ngày |
 | | `P2` | Thẻ đã bị khóa tự động. Tối đa 3 cuộc/24h, 7h–22h, hạn 2 ngày |
 | | `P3` | GD đã bị từ chối, thẻ chưa khóa. Tối đa 3 cuộc/24h, 8h–21h, hạn 1 ngày |
 | **Trạng thái case** | `OPEN` | Bot đang xử lý |
@@ -93,7 +97,7 @@ Các điểm chính:
 | | `CLOSE` | KH xác nhận chính chủ → đóng case thành công |
 | | `HAND_TO_DTV` | Chuyển ĐTV (nhân viên tổng đài con người) qua hàng đợi |
 | | `STOP` | Bot dừng (có thể kèm chặn số) |
-| | `EXHAUSTED` | Hết lượt, gửi SMS cuối, tạo ticket "không liên hệ được" |
+| | `EXHAUSTED` | Hết lượt, gửi ZNS cuối, tạo ticket "không liên hệ được" |
 | **Nhóm kết quả cuộc gọi** | `XONG` | KH xác nhận chính chủ (tính lượt) |
 | | `DỪNG BOT` | Nhầm số, SIM swap, KH từ chối liên hệ |
 | | `NGƯỜI THẬT XỬ LÝ` | Phủ nhận GD, bức xúc, ngoài phạm vi bot, không rõ (tính lượt) |
@@ -134,7 +138,8 @@ Các điểm chính:
 | | `DIALING` | Agent đang quay số, chờ kết quả |
 | | `DONE` | Đã hoàn tất (có kết quả rồi) |
 | | `CANCELLED` | Bị hủy (case đóng, hoặc có cảnh báo mới ghi đè) |
-| **Event trong outbox** | `SMS` | Có SMS cần gửi (SMS gateway đọc) |
+| **Event trong outbox** | `PUSH_IPAY` | Push notification qua iPay app báo trước cuộc gọi |
+| | `ZNS` | Có ZNS cần gửi qua Zalo (ZNS gateway đọc) |
 | | `DTV_HANDOFF` | Chuyển case cho ĐTV; payload có priority và ticket |
 | | `CASE_FINAL` | Case đã kết thúc; dùng đồng bộ với agent của Đạt / báo cáo |
 | | `OPS_ALERT` | Có vấn đề cần người check (lỗi hệ thống liên tục...) |
@@ -142,7 +147,7 @@ Các điểm chính:
 | | `TWO/TWFA` | Tranzware — hệ thống phát hiện GD thẻ nghi gian lận |
 | | `PBX` | Tổng đài nội bộ (Freeswitch/Asterisk) |
 | | `SIP trunk` | Đường trung kế SIP nối PBX với telco → KH |
-| | `Phone_SMS` | Số KH đã đăng ký nhận SMS, dùng làm số dự phòng |
+| | `Phone_SMS` | Số KH đã đăng ký nhận tin nhắn, dùng làm số dự phòng |
 ## Chưa làm
 
 - Nối thật với TWO/TWFA, Freeswitch/Asterisk, agent của Đạt.
