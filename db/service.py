@@ -128,7 +128,7 @@ class CallbackService:
         return [ScheduledCall(r["schedule_id"], r["case_id"], r["phone"], repo.from_ts(r["due_at"], self.tz),
                               bool(r["appointment"])) for r in rows]
 
-    def start_call(self, schedule_id: int, now: datetime) -> Decision:
+    def start_call(self, schedule_id: int, now: datetime, dtv_online_count: int | None = None) -> Decision:
         """Kiểm tra lại ngay trước khi quay số. DIAL_NOW -> agent gọi số decision.target_phone."""
         with repo.transaction(self.conn) as c:
             s = repo.get_schedule(c, schedule_id)
@@ -137,7 +137,7 @@ class CallbackService:
             case, version = repo.get_case(c, s["case_id"], self.tz)
             attempts = repo.list_attempts(c, case.case_id, self.tz)
             d = pre_dial_check(case, attempts, s["phone"], now, self.cfg, self._phone_history(c, case, now),
-                               appointment=bool(s["appointment"]))
+                               appointment=bool(s["appointment"]), dtv_online_count=dtv_online_count)
             if d.action is Action.DIAL_NOW:
                 repo.mark_dialing(c, schedule_id, d.target_phone, now)
                 self._apply(c, case, version, d, "pre_dial", None, now, reschedule=False)

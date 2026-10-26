@@ -368,6 +368,27 @@ class GuardAndPreDialTest(unittest.TestCase):
         d2 = pre_dial_check(make_case(), hist, PRIMARY, at(21, 15), CFG)
         self.assertEqual(d2.next_call_at, at(22, 9))
 
+    def test_dtv_zero_defers_call(self):
+        d = pre_dial_check(make_case(), [], PRIMARY, at(21, 9), CFG, dtv_online_count=0)
+        self.assertEqual(d.action, Action.SCHEDULE_CALL)
+        self.assertEqual(d.rule_id, "K4")
+        self.assertEqual(d.next_call_at, at(21, 9) + timedelta(minutes=CFG.dtv_recheck_minutes))
+        self.assertEqual(d.target_phone, PRIMARY)
+
+    def test_dtv_positive_allows_dial(self):
+        d = pre_dial_check(make_case(), [], PRIMARY, at(21, 9), CFG, dtv_online_count=3)
+        self.assertEqual(d.action, Action.DIAL_NOW)
+
+    def test_dtv_none_allows_dial(self):
+        d = pre_dial_check(make_case(), [], PRIMARY, at(21, 9), CFG, dtv_online_count=None)
+        self.assertEqual(d.action, Action.DIAL_NOW)
+
+    def test_dtv_zero_still_checked_after_guard(self):
+        case = make_case(status=CaseStatus.CLOSED)
+        d = pre_dial_check(case, [], PRIMARY, at(21, 9), CFG, dtv_online_count=0)
+        self.assertEqual(d.action, Action.STOP)
+        self.assertEqual(d.rule_id, "G1")
+
 
 class MergeAlertTest(unittest.TestCase):
     def alert(self, **kw):

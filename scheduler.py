@@ -56,12 +56,14 @@ class SchedulerConfig:
 
 class Scheduler:
     def __init__(self, svc: CallbackService, dialer: Dialer, cfg: SchedulerConfig | None = None,
-                 dispatcher: OutboxDispatcher | None = None, clock: Callable[[], datetime] | None = None):
+                 dispatcher: OutboxDispatcher | None = None, clock: Callable[[], datetime] | None = None,
+                 dtv_counter: Callable[[], int] | None = None):
         self.svc = svc
         self.dial = dialer
         self.cfg = cfg or SchedulerConfig()
         self.dispatcher = dispatcher
         self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.dtv_counter = dtv_counter
 
     def tick(self) -> int:
         """Chạy 1 vòng. Trả về số cuộc đã quay. Dùng để test và nhịp vòng ngoài."""
@@ -70,7 +72,8 @@ class Scheduler:
         n = 0
         for call in self.svc.claim_due_calls(now, self.cfg.worker_id, self.cfg.batch):
             try:
-                d = self.svc.start_call(call.schedule_id, self.clock())
+                dtv = self.dtv_counter() if self.dtv_counter else None
+                d = self.svc.start_call(call.schedule_id, self.clock(), dtv_online_count=dtv)
             except Exception:
                 log.exception("start_call lỗi, bỏ qua schedule %s", call.schedule_id)
                 continue

@@ -3,6 +3,7 @@ utc_offset_hours: 7            # giờ Việt Nam, không có giờ mùa hè
 docs_min_gap_minutes: 5      # docs: các lần gọi cách nhau >= 5 phút
 rolling_window_hours: 24       # đếm lượt theo 24h trượt
 per_phone_cap_24h: 5           # tổng số cuộc tới 1 số ĐT trong 24h, cộng mọi case
+dtv_recheck_minutes: 5         # không có ĐTV online -> hoãn gọi, thử lại sau n phút
 llm_min_confidence: 0.7        # nhãn LLM dưới ngưỡng -> coi là 'unclear' -> chuyển ĐTV
 
 # Caller ID cố định cho mọi cuộc gọi outbound. Yêu cầu bên tổng đài cấu hình hiển thị số này.

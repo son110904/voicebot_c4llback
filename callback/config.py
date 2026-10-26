@@ -78,6 +78,7 @@ class Config:
     appointment_default_minutes: int
     large_amount_vnd: int
     multi_alert_count: int
+    dtv_recheck_minutes: int
     zns_max_per_case: int
     zns_templates: Mapping[str, str]
     opt_out_prompt: str
@@ -141,6 +142,7 @@ def _build(raw: dict[str, Any]) -> Config:
         appointment_default_minutes=int(raw["appointment"]["default_minutes"]),
         large_amount_vnd=int(raw["urgency"]["large_amount_vnd"]),
         multi_alert_count=int(raw["urgency"]["multi_alert_count"]),
+        dtv_recheck_minutes=int(raw.get("dtv_recheck_minutes", 5)),
         zns_max_per_case=int(raw["zns"]["max_per_case"]),
         zns_templates=dict(raw["zns"]["templates"]),
         opt_out_prompt=str(raw.get("call_script", {}).get("opt_out_prompt", "")),

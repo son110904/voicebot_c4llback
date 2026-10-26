@@ -103,7 +103,7 @@ def decide(case: Case, attempts: Sequence[Attempt], event: Event, now: datetime,
 
 def pre_dial_check(case: Case, attempts: Sequence[Attempt], phone: str, now: datetime,
                    cfg: Config, phone_history: PhoneHistory | None = None,
-                   appointment: bool = False) -> Decision:
+                   appointment: bool = False, dtv_online_count: int | None = None) -> Decision:
     """Kiểm tra lại ngay trước khi quay số (trạng thái case có thể đã đổi từ lúc hẹn lịch)."""
     _require_aware(now, *(a.started_at for a in attempts))
     guard = _guard(case)
@@ -123,6 +123,11 @@ def pre_dial_check(case: Case, attempts: Sequence[Attempt], phone: str, now: dat
     if t > now:
         return Decision(Action.SCHEDULE_CALL, "K3", "Chưa được gọi lúc này: " + "; ".join(notes),
                         next_call_at=t, target_phone=target, appointment=appointment)
+    if dtv_online_count is not None and dtv_online_count == 0:
+        return Decision(Action.SCHEDULE_CALL, "K4",
+                        "Không có ĐTV online -> hoãn gọi, thử lại sau",
+                        next_call_at=now + timedelta(minutes=cfg.dtv_recheck_minutes),
+                        target_phone=target, appointment=appointment)
     return Decision(Action.DIAL_NOW, "K0", "Case còn mở, đủ điều kiện -> quay số",
                     target_phone=target, appointment=appointment)
 
