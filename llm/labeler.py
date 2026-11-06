@@ -14,6 +14,7 @@ from datetime import datetime, timezone, tzinfo
 from typing import Protocol
 
 from callback.models import LLM_OUTCOMES, Outcome
+from callback.time_parser import parse_callback_time
 from db.service import LlmLabel
 from .pii import mask_pii
 
@@ -22,15 +23,17 @@ PROMPT_VERSION = "v1"
 # Tập nhãn LLM được phép trả về (không bao gồm UNCLEAR - đó là fallback nội bộ)
 _ALLOWED = {o.value for o in LLM_OUTCOMES if o is not Outcome.UNCLEAR}
 
-_PROMPT = f"""Bạn phân loại kết quả cuộc gọi của voicebot ngân hàng xác thực giao dịch thẻ.
+_PROMPT_TEMPLATE = """Bạn phân loại kết quả cuộc gọi của voicebot ngân hàng xác thực giao dịch thẻ.
+Thời điểm cuộc gọi: {{call_time}}.
+
 Đọc transcript (PII đã che bằng token <CARD>/<PHONE>/<ID>/<CODE>/<AMOUNT>/<EMAIL>) rồi trả về CHỈ MỘT JSON đúng schema:
 
-{{
-  "outcome": "<một trong {sorted(_ALLOWED)}>",
+{{{{
+  "outcome": "<một trong {allowed}>",
   "confidence": <số thực 0..1>,
-  "callback_at": "<ISO-8601 có offset, nếu KH hẹn giờ cụ thể, ngược lại null>",
+  "callback_at": "<ISO-8601 có offset nếu KH hẹn giờ, hoặc chuỗi thời gian tương đối nếu KH nói 'chiều nay'/'5 phút nữa'/'sáng mai', null nếu không hẹn>",
   "evidence": "<trích 1 câu KH nói, <=160 ký tự>"
-}}
+}}}}
 
 Hướng dẫn chọn nhãn:
 - verified_confirmed: KH xác nhận chính chủ thực hiện giao dịch.
@@ -44,6 +47,10 @@ Hướng dẫn chọn nhãn:
 - other_number_requested: người nghe đòi gọi sang số khác.
 - scam_suspected_hangup: KH nghi ngờ lừa đảo rồi cúp máy.
 - need_human: KH đòi gặp người thật, hoặc ngoài phạm vi bot.
+
+callback_at: nếu KH hẹn giờ cụ thể ("3 giờ chiều", "14:30") -> ISO-8601 tuyệt đối.
+Nếu KH nói tương đối ("5 phút nữa", "chiều nay", "sáng mai") -> ghi nguyên lời KH.
+Không hẹn -> null.
 
 Không được bịa. Không chắc -> confidence thấp."""
 
@@ -83,15 +90,18 @@ class LlmLabeler:
         self.cfg = cfg or LabelerConfig()
         self.tz = tz
 
-    def label(self, transcript: str) -> LlmLabel:
+    def label(self, transcript: str, now: datetime | None = None) -> LlmLabel:
+        now = now or datetime.now(self.tz)
         masked = mask_pii(transcript)[: self.cfg.max_transcript_chars]
+        call_time = now.astimezone(self.tz).strftime("%Y-%m-%d %H:%M %Z")
+        prompt = _PROMPT_TEMPLATE.format(allowed=sorted(_ALLOWED), call_time=call_time)
         try:
-            raw = self.client.complete(_PROMPT, masked)
+            raw = self.client.complete(prompt, masked)
         except Exception as e:
             return self._fallback(f"gọi LLM lỗi: {e!r}", raw=None)
-        return self._parse(raw)
+        return self._parse(raw, now)
 
-    def _parse(self, raw: str) -> LlmLabel:
+    def _parse(self, raw: str, now: datetime) -> LlmLabel:
         try:
             data = json.loads(_extract_json(raw))
         except (json.JSONDecodeError, ValueError) as e:
@@ -110,10 +120,12 @@ class LlmLabeler:
         callback_at = None
         cb = data.get("callback_at")
         if cb:
-            try:
-                dt = datetime.fromisoformat(str(cb).replace("Z", "+00:00"))
-                callback_at = dt.astimezone(self.tz) if dt.utcoffset() else dt.replace(tzinfo=self.tz)
-            except ValueError:
+            cb_str = str(cb)
+            # Thu ISO-8601 truoc, sau do fallback sang time parser tieng Viet
+            parsed = parse_callback_time(cb_str, now, self.tz)
+            if parsed is not None:
+                callback_at = parsed
+            else:
                 return self._fallback(f"callback_at không parse được: {cb!r}", raw)
 
         return LlmLabel(label=Outcome(label_name), confidence=conf, callback_at=callback_at,
@@ -137,5 +149,5 @@ def _extract_json(raw: str) -> str:
 
 
 def label_transcript(transcript: str, client: LlmClient, tz: tzinfo = timezone.utc,
-                     cfg: LabelerConfig | None = None) -> LlmLabel:
-    return LlmLabeler(client, cfg, tz).label(transcript)
+                     cfg: LabelerConfig | None = None, now: datetime | None = None) -> LlmLabel:
+    return LlmLabeler(client, cfg, tz).label(transcript, now)
