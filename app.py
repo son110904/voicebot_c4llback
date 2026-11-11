@@ -7,8 +7,11 @@ Chạy: CALLBACK_DB_URL=postgresql://... python app.py
 """
 import json
 import os
+import pickle
 from datetime import datetime, timezone
+from pathlib import Path
 
+import numpy as np
 from flask import Flask, abort, jsonify, render_template, request
 
 from callback.config import load_config
@@ -16,6 +19,21 @@ from db import connect as db_connect
 from db.service import CallbackService
 
 DB_URL = os.environ.get("CALLBACK_DB_URL", "postgresql://postgres:cb@localhost:5432/callback")
+
+# ---- Priority model ----
+_MODEL_DIR = Path(__file__).parent / "models"
+_priority_rf = None
+_priority_info = None
+
+
+def _load_priority_model():
+    global _priority_rf, _priority_info
+    if _priority_rf is not None:
+        return
+    with open(_MODEL_DIR / "priority_rf.pkl", "rb") as f:
+        _priority_rf = pickle.load(f)
+    with open(_MODEL_DIR / "priority_info.json", encoding="utf-8") as f:
+        _priority_info = json.load(f)
 
 GROUP_COLOR = {
     "XONG": "ok",
@@ -158,6 +176,59 @@ def zns_status_webhook():
     if not found:
         return jsonify({"error": "unknown msg_id"}), 404
     return jsonify({"ok": True})
+
+
+@app.route("/priority")
+def priority_page():
+    _load_priority_model()
+    return render_template("priority.html", info=_priority_info)
+
+
+@app.route("/api/priority", methods=["POST"])
+def api_priority():
+    _load_priority_model()
+    data = request.get_json(silent=True) or {}
+    cats = _priority_info["merchant_categories"]
+
+    merchant_cat = data.get("merchant_category", "other")
+    mcat_idx = cats.index(merchant_cat) if merchant_cat in cats else cats.index("other")
+
+    hour = int(data.get("hour_of_day", 12))
+    dow = int(data.get("day_of_week", 0))
+
+    if hour >= 22 or hour < 6:
+        period = 0
+    elif hour < 12:
+        period = 1
+    elif hour < 18:
+        period = 2
+    else:
+        period = 3
+
+    cust_rate = float(data.get("customer_prev_reachable_rate", 0.5))
+    cust_count = min(int(data.get("customer_ticket_count", 0)), 20)
+    is_nnldl = 1 if data.get("is_nnldl") else 0
+    has_note = 1 if data.get("has_note") else 0
+
+    features = np.array([[mcat_idx, hour, dow, period, cust_rate, cust_count, is_nnldl, has_note]],
+                        dtype=np.float32)
+    prob = float(_priority_rf.predict_proba(features)[0, 1])
+
+    if prob >= 0.6:
+        bucket, action, color = "HIGH", "Gọi ngay", "ok"
+    elif prob >= 0.4:
+        bucket, action, color = "MEDIUM", "Gọi bình thường", "retry"
+    elif prob >= 0.2:
+        bucket, action, color = "LOW", "Hoãn lại / đợi giờ tốt hơn", "human"
+    else:
+        bucket, action, color = "SKIP", "Gửi ZNS thay vì gọi", "stop"
+
+    return jsonify({
+        "probability": round(prob, 3),
+        "bucket": bucket,
+        "action": action,
+        "color": color,
+    })
 
 
 if __name__ == "__main__":

@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}AI Priority - Voicebot Callback{% endblock %}
+{% block body %}
+<h1>AI Priority Scoring</h1>
+<p class="muted">Random Forest model - dự đoán khả năng liên hệ được KH, phân loại ưu tiên gọi</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+
+  <!-- FORM -->
+  <div class="card">
+    <h2>Thông tin ticket</h2>
+    <form id="frm" autocomplete="off" style="display:flex;flex-direction:column;gap:14px">
+
+      <label style="font-size:13px;font-weight:600">
+        Nhóm ĐVCNT
+        <select name="merchant_category" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-top:4px;font-size:14px">
+          {% for cat in info.merchant_categories %}
+          <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label style="font-size:13px;font-weight:600">
+          Giờ cảnh báo
+          <input name="hour_of_day" type="number" min="0" max="23" value="10"
+                 style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-top:4px;font-size:14px">
+        </label>
+        <label style="font-size:13px;font-weight:600">
+          Thứ (0=T2 .. 6=CN)
+          <input name="day_of_week" type="number" min="0" max="6" value="0"
+                 style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-top:4px;font-size:14px">
+        </label>
+      </div>
+
+      <label style="font-size:13px;font-weight:600">
+        Tỷ lệ liên hệ được trước đó (0.0 - 1.0)
+        <input name="customer_prev_reachable_rate" type="number" min="0" max="1" step="0.01" value="0.50"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-top:4px;font-size:14px">
+      </label>
+
+      <label style="font-size:13px;font-weight:600">
+        Số ticket trước đó của KH
+        <input name="customer_ticket_count" type="number" min="0" max="99" value="0"
+               style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-top:4px;font-size:14px">
+      </label>
+
+      <div style="display:flex;gap:20px">
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" name="is_nnldl"> NNLDL
+        </label>
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" name="has_note" checked> Có ghi chú
+        </label>
+      </div>
+
+      <button type="submit" style="padding:10px 20px;background:#1e293b;color:#fff;border:0;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:4px">
+        Dự đoán
+      </button>
+    </form>
+  </div>
+
+  <!-- RESULT -->
+  <div class="card" id="result-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px">
+    <div id="result-empty" style="color:var(--muted);font-style:italic">Nhập thông tin và bấm Dự đoán</div>
+    <div id="result-content" hidden>
+      <div style="text-align:center">
+        <div id="res-bucket" style="font-size:42px;font-weight:800;letter-spacing:2px"></div>
+        <div id="res-prob" style="font-size:18px;color:var(--muted);margin-top:4px"></div>
+        <div id="res-action" style="margin-top:12px;font-size:16px;font-weight:600;padding:8px 20px;border-radius:20px;display:inline-block"></div>
+      </div>
+
+      <div style="margin-top:30px;width:100%">
+        <div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Xác suất liên hệ được</div>
+        <div style="position:relative;height:28px;background:var(--line);border-radius:14px;overflow:hidden">
+          <div id="res-bar" style="height:100%;border-radius:14px;transition:width .5s ease"></div>
+          <div id="res-bar-label" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:700;color:#fff"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
+          <span>0%</span>
+          <span>SKIP</span>
+          <span>LOW</span>
+          <span>MEDIUM</span>
+          <span>HIGH</span>
+          <span>100%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Feature importance -->
+<div class="card" style="margin-top:20px">
+  <h2>Feature importance (Random Forest)</h2>
+  <div style="display:grid;gap:8px;margin-top:12px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">customer_prev_reachable_rate</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:84.3%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">33.7%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">hour_of_day</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:50.8%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">20.3%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">has_note</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:35.3%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">14.1%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">merchant_category</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:28.0%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">11.2%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">customer_ticket_count</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:24.5%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">9.8%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">time_period</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:17.8%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">7.1%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">day_of_week</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:8.0%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">3.2%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="min-width:200px;font-size:13px">is_nnldl</span>
+      <div style="flex:1;height:20px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div style="width:1.8%;height:100%;background:var(--retry);border-radius:4px"></div>
+      </div>
+      <span style="font-size:13px;font-weight:600;min-width:50px;text-align:right">0.7%</span>
+    </div>
+  </div>
+</div>
+
+<!-- Bucket reference -->
+<div class="card" style="margin-top:14px">
+  <h2>Priority buckets</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:10px">
+    <div style="border-left:4px solid var(--ok);padding:10px 14px;background:var(--ok-bg);border-radius:6px">
+      <div style="font-weight:700;color:var(--ok)">HIGH (P &ge; 0.6)</div>
+      <div style="font-size:13px;margin-top:2px">63% thực tế liên hệ được</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Gọi ngay</div>
+    </div>
+    <div style="border-left:4px solid var(--retry);padding:10px 14px;background:var(--retry-bg);border-radius:6px">
+      <div style="font-weight:700;color:var(--retry)">MEDIUM (0.4 - 0.6)</div>
+      <div style="font-size:13px;margin-top:2px">34% thực tế liên hệ được</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Gọi bình thường</div>
+    </div>
+    <div style="border-left:4px solid var(--human);padding:10px 14px;background:var(--human-bg);border-radius:6px">
+      <div style="font-weight:700;color:var(--human)">LOW (0.2 - 0.4)</div>
+      <div style="font-size:13px;margin-top:2px">18.5% thực tế liên hệ được</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Hoãn lại / đợi giờ tốt</div>
+    </div>
+    <div style="border-left:4px solid var(--stop);padding:10px 14px;background:var(--stop-bg);border-radius:6px">
+      <div style="font-weight:700;color:var(--stop)">SKIP (P &lt; 0.2)</div>
+      <div style="font-size:13px;margin-top:2px">5.3% thực tế liên hệ được</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">Gửi ZNS thay vì gọi</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLORS = {ok:'#16a34a', retry:'#2563eb', human:'#d97706', stop:'#dc2626'};
+const BG = {ok:'#dcfce7', retry:'#dbeafe', human:'#fef3c7', stop:'#fee2e2'};
+
+document.getElementById('frm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const fd = new FormData(this);
+  const body = {
+    merchant_category: fd.get('merchant_category'),
+    hour_of_day: +fd.get('hour_of_day'),
+    day_of_week: +fd.get('day_of_week'),
+    customer_prev_reachable_rate: +fd.get('customer_prev_reachable_rate'),
+    customer_ticket_count: +fd.get('customer_ticket_count'),
+    is_nnldl: !!this.querySelector('[name=is_nnldl]').checked,
+    has_note: !!this.querySelector('[name=has_note]').checked,
+  };
+
+  const res = await fetch('/api/priority', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  const r = await res.json();
+
+  document.getElementById('result-empty').hidden = true;
+  document.getElementById('result-content').hidden = false;
+
+  const c = COLORS[r.color];
+  const bg = BG[r.color];
+
+  document.getElementById('res-bucket').textContent = r.bucket;
+  document.getElementById('res-bucket').style.color = c;
+
+  document.getElementById('res-prob').textContent = 'P(reachable) = ' + (r.probability * 100).toFixed(1) + '%';
+
+  const actionEl = document.getElementById('res-action');
+  actionEl.textContent = r.action;
+  actionEl.style.background = bg;
+  actionEl.style.color = c;
+
+  const bar = document.getElementById('res-bar');
+  bar.style.width = (r.probability * 100) + '%';
+  bar.style.background = c;
+
+  document.getElementById('res-bar-label').textContent = (r.probability * 100).toFixed(1) + '%';
+});
+</script>
+{% endblock %}

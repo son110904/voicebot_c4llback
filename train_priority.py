@@ -1,12 +1,8 @@
 """
-Train Random Forest + Decision Tree cho priority scoring.
-
 Input:  file Excel outbound tickets (cột: merchant, hour, dow, reachable, ...)
 Output: models/priority_rf.pkl, models/priority_dt.pkl, models/priority_info.json
-
-Chạy:  python -I train_priority.py --data path/to/tickets.xlsx
+run: python -I train_priority.py --data path/to/tickets.xlsx
 """
-
 import argparse
 import json
 import pickle
@@ -18,7 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import cross_val_score, train_test_split
 
-# ── Merchant category mapping ──────────────────────────────────
+# Merchant category mapping 
 
 MERCHANT_GROUPS = {
     "apple": ["APPLE.COM/BILL", "APPLE.COM"],
@@ -51,7 +47,7 @@ def classify_merchant(name: str) -> str:
     return "other"
 
 
-# ── Feature engineering ────────────────────────────────────────
+#  Feature engineering 
 
 def hour_to_period(hour: int) -> int:
     if hour >= 22 or hour < 6:
@@ -91,7 +87,7 @@ def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     return X, y
 
 
-# ── Training ───────────────────────────────────────────────────
+# Training 
 
 def train(data_path: str, output_dir: str = "models"):
     out = Path(output_dir)
