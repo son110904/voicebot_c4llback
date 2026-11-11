@@ -1,6 +1,7 @@
 """
 Input:  file Excel outbound tickets (cột: merchant, hour, dow, reachable, ...)
-Output: models/priority_rf.pkl, models/priority_dt.pkl, models/priority_info.json
+Output: models/priority_rf.pkl, models/priority_dt.pkl, models/priority_xgb.pkl,
+        models/priority_info.json
 run: python -I train_priority.py --data path/to/tickets.xlsx
 """
 import argparse
@@ -13,6 +14,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import cross_val_score, train_test_split
+from xgboost import XGBClassifier
 
 # Merchant category mapping 
 
@@ -130,6 +132,30 @@ def train(data_path: str, output_dir: str = "models"):
     dt_cv = cross_val_score(dt, X_train, y_train, cv=5, scoring="f1").mean()
     print(f"  DT 5-fold CV F1: {dt_cv:.4f}")
 
+    # XGBoost
+    n_pos = int(y_train.sum())
+    n_neg = len(y_train) - n_pos
+    xgb = XGBClassifier(
+        n_estimators=200,
+        max_depth=6,
+        learning_rate=0.1,
+        scale_pos_weight=n_neg / n_pos,
+        min_child_weight=30,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42,
+        n_jobs=-1,
+        eval_metric="logloss",
+    )
+    xgb.fit(X_train, y_train)
+    xgb_cv = cross_val_score(xgb, X_train, y_train, cv=5, scoring="f1").mean()
+    print(f"  XGB 5-fold CV F1: {xgb_cv:.4f}")
+
+    # Summary
+    results = {"DT": dt_cv, "RF": rf_cv, "XGB": xgb_cv}
+    best_name = max(results, key=results.get)
+    print(f"\n  Best: {best_name} (F1={results[best_name]:.4f})")
+
     # Feature importance
     feat_names = [
         "merchant_category", "hour_of_day", "day_of_week", "time_period",
@@ -146,6 +172,8 @@ def train(data_path: str, output_dir: str = "models"):
         pickle.dump(rf, f)
     with open(out / "priority_dt.pkl", "wb") as f:
         pickle.dump(dt, f)
+    with open(out / "priority_xgb.pkl", "wb") as f:
+        pickle.dump(xgb, f)
 
     info = {
         "features": feat_names,
@@ -156,6 +184,8 @@ def train(data_path: str, output_dir: str = "models"):
         "test_size": len(X_test),
         "dt_cv_f1": dt_cv,
         "rf_cv_f1": rf_cv,
+        "xgb_cv_f1": xgb_cv,
+        "best_model": best_name,
     }
     with open(out / "priority_info.json", "w", encoding="utf-8") as f:
         json.dump(info, f, indent=2, ensure_ascii=False)
@@ -163,6 +193,7 @@ def train(data_path: str, output_dir: str = "models"):
     print(f"\nSaved to {out}/")
     print("  priority_rf.pkl")
     print("  priority_dt.pkl")
+    print("  priority_xgb.pkl")
     print("  priority_info.json")
 
 
