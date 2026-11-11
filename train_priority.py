@@ -61,6 +61,42 @@ def hour_to_period(hour: int) -> int:
     return 3      # tối
 
 
+REACHABLE_PREFIXES = ("1 ", "2 ", "3 ")
+
+
+def load_raw_excel(path: str) -> pd.DataFrame:
+    raw = pd.read_excel(path, header=None, skiprows=3)
+    raw.columns = [
+        "ticket_no", "customer_id", "ticket_type", "card_no", "name",
+        "id_card", "owner", "created_by", "modified_by", "result",
+        "merchant", "phone", "alert_time", "passport", "cif", "note",
+    ]
+    raw = raw[raw["ticket_no"] != "Ticket No"].reset_index(drop=True)
+    raw = raw.dropna(subset=["result", "alert_time"]).reset_index(drop=True)
+
+    raw["alert_time"] = pd.to_datetime(raw["alert_time"])
+    raw = raw.sort_values("alert_time").reset_index(drop=True)
+    raw["hour_of_day"] = raw["alert_time"].dt.hour
+    raw["day_of_week"] = raw["alert_time"].dt.dayofweek
+
+    raw["is_reachable"] = raw["result"].str.startswith(REACHABLE_PREFIXES).astype(int)
+    raw["is_nnldl"] = raw["note"].fillna("").str.contains("NNLDL", case=False).astype(int)
+    raw["has_note"] = raw["note"].notna().astype(int)
+
+    # expanding mean: chỉ dùng các dòng TRƯỚC dòng hiện tại (tránh data leakage)
+    raw["customer_prev_reachable_rate"] = (
+        raw.groupby("customer_id")["is_reachable"]
+        .transform(lambda s: s.expanding().mean().shift(1))
+        .fillna(0.5)
+        .round(4)
+    )
+    raw["customer_ticket_count"] = (
+        raw.groupby("customer_id").cumcount()
+    )
+
+    return raw
+
+
 def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     df = df.copy()
 
@@ -96,8 +132,8 @@ def train(data_path: str, output_dir: str = "models"):
     out.mkdir(exist_ok=True)
 
     print(f"Loading data from {data_path} ...")
-    df = pd.read_excel(data_path)
-    print(f"  {len(df)} rows")
+    df = load_raw_excel(data_path)
+    print(f"  {len(df)} rows after cleanup")
 
     X, y = build_features(df)
     print(f"  Features: {X.shape[1]}, target balance: "

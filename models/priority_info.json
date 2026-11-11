@@ -75,8 +75,10 @@
     ]
   },
   "target": "is_reachable (1=lien he duoc, 0=khong)",
-  "train_size": 15996,
-  "test_size": 3999,
-  "dt_cv_f1": 0.5298575493363318,
-  "rf_cv_f1": 0.5557955089628318
+  "train_size": 15774,
+  "test_size": 3944,
+  "dt_cv_f1": 0.5383769937480627,
+  "rf_cv_f1": 0.5590821181112051,
+  "xgb_cv_f1": 0.552246899593242,
+  "best_model": "RF"
 }
