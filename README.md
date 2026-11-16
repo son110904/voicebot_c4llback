@@ -6,6 +6,8 @@ Bộ campaign rules + DB + LLM labeler + scheduler cho voicebot xác thực giao
 
 ![Luồng xử lý voicebot callback](docs/flow.svg)
 
+Đặc tả phần nối với tổng đài thật và voice agent: [docs/call_controller_spec.md](docs/call_controller_spec.md).
+
 ## Cấu trúc
 
 ```
