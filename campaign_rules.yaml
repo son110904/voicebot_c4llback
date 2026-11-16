@@ -91,3 +91,52 @@ zns:
 # Khi KH chọn opt-out: LLM gán nhãn DO_NOT_CALL hoặc NEED_HUMAN -> rule engine xử lý tương ứng.
 call_script:
   opt_out_prompt: "Nếu anh/chị không muốn nhận cuộc gọi tự động, vui lòng nói 'chuyển người thật' hoặc bấm phím 0 để được kết nối với nhân viên."
+  purpose_card_fraud: "VietinBank gọi để xác thực một giao dịch thẻ vừa phát sinh mà hệ thống nghi ngờ không phải do anh/chị thực hiện."
+
+# Campaign = lý do gọi. Mỗi campaign có mức khẩn, mẫu ZNS và câu nêu mục đích riêng; các giới hạn chung
+# (per_phone_cap_24h, alt_phone, system_retry, outcomes...) dùng chung.
+# card_fraud không khai levels/zns_templates thì lấy `levels` và `zns.templates` ở trên.
+# loan_due / statement_due: mức khẩn tính theo số ngày tới hạn (urgency.py):
+#   quá hạn >= overdue_days_p1 -> P1; quá hạn < đó -> P2; còn <= urgent_within_days -> P2; còn lại P3.
+# Nguồn dữ liệu: card_fraud do TWO/TWFA đẩy (POST /api/alerts); hai campaign kia do job pull theo lịch
+# (triggers/pull_job.py). Số ngày nhìn trước khi pull: lookahead_days.
+campaigns:
+  card_fraud:
+    label: "Xác thực giao dịch thẻ nghi gian lận"
+    script_purpose: "VietinBank gọi để xác thực một giao dịch thẻ vừa phát sinh mà hệ thống nghi ngờ không phải do anh/chị thực hiện."
+  loan_due:
+    label: "Nhắc kỳ trả nợ sắp đến hạn"
+    script_purpose: "VietinBank gọi để nhắc anh/chị khoản vay sắp đến kỳ trả nợ và hỏi anh/chị đã sắp xếp thanh toán chưa."
+    lookahead_days: 3            # GIẢ ĐỊNH - nhắc trước 3 ngày; nghiệp vụ chốt
+    max_overdue_days: 10         # GIẢ ĐỊNH - quá hạn hơn thì là việc của thu hồi nợ, bot không gọi
+    urgent_within_days: 1
+    overdue_days_p1: 3
+    levels:                      # nhắc nợ không gọi đêm, ít lượt hơn cảnh báo thẻ
+      P1: {max_calls_24h: 2, min_gap_minutes: 60, window: "08:00-20:00", max_days: 3,
+           zns_after_failures: 1, appointment_max_wait_minutes: 1440, max_appointments: 2}
+      P2: {max_calls_24h: 2, min_gap_minutes: 120, window: "08:00-20:00", max_days: 2,
+           zns_after_failures: 1, appointment_max_wait_minutes: 1440, max_appointments: 2}
+      P3: {max_calls_24h: 1, min_gap_minutes: 240, window: "09:00-19:00", max_days: 3,
+           zns_after_failures: 1, appointment_max_wait_minutes: 2880, max_appointments: 1}
+    zns_templates:               # KHÔNG ghi số tiền / số hợp đồng
+      pre_call: "VietinBank sắp gọi anh/chị để nhắc kỳ trả nợ sắp đến hạn. Anh/chị có thể xem và thanh toán ngay trên app VietinBank iPay."
+      contact: "VietinBank đã cố liên hệ anh/chị về kỳ trả nợ sắp đến hạn. Vui lòng mở app VietinBank iPay để xem chi tiết, hoặc bấm nút bên dưới để gọi hotline."
+      final: "VietinBank không liên hệ được anh/chị về kỳ trả nợ sắp đến hạn. Vui lòng mở app VietinBank iPay hoặc bấm nút bên dưới để được hỗ trợ."
+  statement_due:
+    label: "Nhắc hạn thanh toán sao kê thẻ"
+    script_purpose: "VietinBank gọi để nhắc anh/chị sao kê thẻ tín dụng sắp đến hạn thanh toán và hỏi anh/chị đã sắp xếp thanh toán chưa."
+    lookahead_days: 3            # GIẢ ĐỊNH
+    max_overdue_days: 10         # GIẢ ĐỊNH
+    urgent_within_days: 1
+    overdue_days_p1: 5
+    levels:
+      P1: {max_calls_24h: 2, min_gap_minutes: 60, window: "08:00-20:00", max_days: 3,
+           zns_after_failures: 1, appointment_max_wait_minutes: 1440, max_appointments: 2}
+      P2: {max_calls_24h: 2, min_gap_minutes: 120, window: "08:00-20:00", max_days: 2,
+           zns_after_failures: 1, appointment_max_wait_minutes: 1440, max_appointments: 2}
+      P3: {max_calls_24h: 1, min_gap_minutes: 240, window: "09:00-19:00", max_days: 3,
+           zns_after_failures: 1, appointment_max_wait_minutes: 2880, max_appointments: 1}
+    zns_templates:
+      pre_call: "VietinBank sắp gọi anh/chị để nhắc hạn thanh toán sao kê thẻ. Anh/chị có thể xem và thanh toán ngay trên app VietinBank iPay."
+      contact: "VietinBank đã cố liên hệ anh/chị về hạn thanh toán sao kê thẻ. Vui lòng mở app VietinBank iPay để xem chi tiết, hoặc bấm nút bên dưới để gọi hotline."
+      final: "VietinBank không liên hệ được anh/chị về hạn thanh toán sao kê thẻ. Vui lòng mở app VietinBank iPay hoặc bấm nút bên dưới để được hỗ trợ."

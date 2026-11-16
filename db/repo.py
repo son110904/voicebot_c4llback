@@ -11,7 +11,9 @@ from datetime import datetime, timezone, tzinfo
 from enum import Enum
 from typing import Any, Iterable, Iterator
 
-from callback.models import Action, Alert, Attempt, Case, CaseStatus, Decision, Group, Outcome, Urgency
+from callback.models import (
+    Action, Alert, Attempt, CampaignType, Case, CaseStatus, Decision, Group, Outcome, Urgency,
+)
 
 from .driver import Conn
 
@@ -52,13 +54,14 @@ def _marks(n: int) -> str:
 # ------------------------------------------------------------------ cases
 
 _CASE_COLS = ("case_id", "card_ref", "customer_id", "phone", "phone_sms", "urgency", "status", "card_open",
-              "alert_count", "zns_sent", "appointments", "do_not_call", "blocked_phones", "created_at")
+              "alert_count", "zns_sent", "appointments", "do_not_call", "blocked_phones", "created_at",
+              "campaign")
 
 
 def _case_values(c: Case) -> tuple:
     return (c.case_id, c.card_ref, c.customer_id, c.phone, c.phone_sms, c.urgency.value, c.status.value,
             int(c.card_open), c.alert_count, c.zns_sent, c.appointments, int(c.do_not_call),
-            json.dumps(sorted(c.blocked_phones)), ts(c.created_at))
+            json.dumps(sorted(c.blocked_phones)), ts(c.created_at), c.campaign.value)
 
 
 def insert_case(conn: Conn, case: Case, now: datetime) -> None:
@@ -77,6 +80,7 @@ def get_case(conn: Conn, case_id: str, tz: tzinfo) -> tuple[Case, int] | None:
         status=CaseStatus(r["status"]), card_open=bool(r["card_open"]), alert_count=r["alert_count"],
         zns_sent=r["zns_sent"], appointments=r["appointments"], do_not_call=bool(r["do_not_call"]),
         blocked_phones=frozenset(json.loads(r["blocked_phones"])),
+        campaign=CampaignType(r["campaign"]),
     )
     return case, r["version"]
 
@@ -90,11 +94,13 @@ def update_case(conn: Conn, case: Case, version: int, now: datetime) -> None:
         raise ConcurrentUpdateError(f"Case {case.case_id} đã bị sửa bởi tiến trình khác")
 
 
-def find_open_case(conn: Conn, card_ref: str, customer_id: str) -> str | None:
-    """Case đang mở của cùng thẻ (ưu tiên) hoặc cùng KH."""
-    r = conn.execute("SELECT case_id FROM cases WHERE status = 'OPEN' AND (card_ref = ? OR customer_id = ?) "
+def find_open_case(conn: Conn, card_ref: str, customer_id: str,
+                   campaign: CampaignType = CampaignType.CARD_FRAUD) -> str | None:
+    """Case đang mở cùng campaign của cùng thẻ/hợp đồng (ưu tiên) hoặc cùng KH."""
+    r = conn.execute("SELECT case_id FROM cases WHERE status = 'OPEN' AND campaign = ? "
+                     "AND (card_ref = ? OR customer_id = ?) "
                      "ORDER BY card_ref = ? DESC, created_at LIMIT 1",
-                     (card_ref, customer_id, card_ref)).fetchone()
+                     (campaign.value, card_ref, customer_id, card_ref)).fetchone()
     return r["case_id"] if r else None
 
 
@@ -112,9 +118,10 @@ def alert_case(conn: Conn, alert_id: str) -> str | None:
 
 def insert_alert(conn: Conn, a: Alert, case_id: str, now: datetime) -> None:
     conn.execute("INSERT INTO alerts (alert_id, case_id, card_ref, customer_id, amount_vnd, approved, "
-                 f"card_blocked, created_at, received_at) VALUES ({_marks(9)})",
+                 f"card_blocked, created_at, received_at, campaign, due_date) VALUES ({_marks(11)})",
                  (a.alert_id, case_id, a.card_ref, a.customer_id, a.amount_vnd, int(a.approved),
-                  int(a.card_blocked), ts(a.created_at), ts(now)))
+                  int(a.card_blocked), ts(a.created_at), ts(now), a.campaign.value,
+                  a.due_date.isoformat() if a.due_date else None))
 
 
 # ------------------------------------------------------------------ call_attempts / llm_labels

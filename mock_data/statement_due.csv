@@ -1,0 +1,5 @@
+contract_ref,customer_id,phone,phone_sms,amount_vnd,due_date
+tok-card-S1,KH-S1,0903000001,0983000001,9400000,2026-11-19
+tok-card-S2,KH-S2,0903000002,,2300000,2026-11-16
+tok-card-S3,KH-S3,0903000003,,15600000,2026-11-10
+tok-card-S4,KH-S4,0903000004,0983000004,600000,2026-12-05

@@ -2,8 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
+
+
+class CampaignType(str, Enum):
+    CARD_FRAUD = "card_fraud"          # xác thực GD thẻ nghi gian lận (TWO/TWFA đẩy sự kiện)
+    LOAN_DUE = "loan_due"              # nhắc sắp đến kỳ trả nợ (job pull theo lịch)
+    STATEMENT_DUE = "statement_due"    # nhắc sắp đến hạn thanh toán sao kê thẻ (job pull theo lịch)
 
 
 class Urgency(str, Enum):
@@ -123,12 +129,14 @@ class Action(str, Enum):
 @dataclass(frozen=True)
 class Alert:
     alert_id: str
-    card_ref: str          # mã tham chiếu thẻ đã che/token hóa - KHÔNG BAO GIỜ là số thẻ đầy đủ
+    card_ref: str          # mã tham chiếu thẻ/hợp đồng đã che/token hóa - KHÔNG BAO GIỜ là số thẻ đầy đủ
     customer_id: str
-    amount_vnd: int
-    approved: bool         # GD được cấp phép (True) hay bị từ chối (False)
-    card_blocked: bool     # hệ thống đã tự khóa thẻ chưa
+    amount_vnd: int        # card_fraud: số tiền GD; loan_due/statement_due: số tiền phải trả
+    approved: bool         # card_fraud: GD được cấp phép (True) hay bị từ chối (False); campaign khác: False
+    card_blocked: bool     # card_fraud: hệ thống đã tự khóa thẻ chưa; campaign khác: False
     created_at: datetime
+    campaign: CampaignType = CampaignType.CARD_FRAUD
+    due_date: date | None = None        # loan_due/statement_due: ngày đến hạn
 
 
 @dataclass(frozen=True)
@@ -139,6 +147,7 @@ class Case:
     phone: str                          # số gọi chính
     created_at: datetime
     urgency: Urgency
+    campaign: CampaignType = CampaignType.CARD_FRAUD
     phone_sms: str | None = None        # Phone_SMS - số dự phòng (vẫn gọi là phone_sms theo tên trường bank)
     status: CaseStatus = CaseStatus.OPEN
     card_open: bool = True

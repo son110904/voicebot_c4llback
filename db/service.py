@@ -18,8 +18,8 @@ from typing import Callable
 log = logging.getLogger("service")
 
 from callback import (
-    OUTCOME_GROUP, Action, Alert, Attempt, Case, CaseStatus, Config, Decision, Event, Outcome, Urgency,
-    apply_decision, compute_urgency, decide, merge_alert, outcome_from_pbx, pre_dial_check,
+    OUTCOME_GROUP, Action, Alert, Attempt, CampaignType, Case, CaseStatus, Config, Decision, Event, Outcome,
+    Urgency, apply_decision, compute_urgency, decide, merge_alert, outcome_from_pbx, pre_dial_check,
 )
 
 from . import repo
@@ -80,7 +80,7 @@ class CallbackService:
             if dup:
                 return IngestResult(dup, merged=False, duplicate=True, decision=None)
 
-            open_id = repo.find_open_case(c, alert.card_ref, alert.customer_id)
+            open_id = repo.find_open_case(c, alert.card_ref, alert.customer_id, alert.campaign)
             if open_id:
                 case, version = repo.get_case(c, open_id, self.tz)
                 attempts = repo.list_attempts(c, open_id, self.tz)
@@ -98,7 +98,8 @@ class CallbackService:
             urgency, why = compute_urgency(alert, 1, self.cfg)
             case = Case(case_id=f"CASE-{alert.alert_id}", card_ref=alert.card_ref, customer_id=alert.customer_id,
                         phone=phone, phone_sms=phone_sms, created_at=now, urgency=urgency,
-                        card_open=not alert.card_blocked,
+                        campaign=alert.campaign,
+                        card_open=alert.campaign is CampaignType.CARD_FRAUD and not alert.card_blocked,
                         # KH từng yêu cầu bot không gọi -> case mới cũng không gọi, chuyển ĐTV
                         do_not_call=repo.customer_do_not_call(c, alert.customer_id))
             repo.insert_case(c, case, now)
@@ -111,7 +112,7 @@ class CallbackService:
             call_at = now + timedelta(minutes=lead)
 
             d = pre_dial_check(case, [], phone, call_at, self.cfg, self._phone_history(c, case, now))
-            d = replace(d, reason=f"Tạo case mới mức {urgency.value} ({why}); "
+            d = replace(d, reason=f"Tạo case {alert.campaign.value} mức {urgency.value} ({why}); "
                                    f"đã push iPay báo trước {lead} phút; {d.reason}")
             if d.action is Action.DIAL_NOW and lead > 0:
                 # Lùi lịch gọi để KH có thời gian xem push iPay
@@ -125,9 +126,10 @@ class CallbackService:
 
     def _push_ipay(self, c, case: Case, now: datetime) -> None:
         """Ghi event PUSH_IPAY vào outbox để team iPay/core bank gửi notification tới app KH."""
-        body = self.cfg.zns_templates.get("pre_call", "")
+        body = self.cfg.zns_for(case.campaign).get("pre_call", "")
         repo.insert_outbox(c, case.case_id, None, "PUSH_IPAY",
                            {"customer_id": case.customer_id, "case_id": case.case_id,
+                            "campaign": case.campaign.value,
                             "urgency": case.urgency.value, "hotline": self.cfg.hotline,
                             "body": body}, now)
 
@@ -240,7 +242,7 @@ class CallbackService:
         return {
             # định danh / phân loại
             "case_id": case.case_id, "customer_id": case.customer_id, "card_ref": case.card_ref,
-            "phone": phone, "urgency": case.urgency.value,
+            "campaign": case.campaign.value, "phone": phone, "urgency": case.urgency.value,
             # trạng thái / biện pháp bảo vệ thẻ
             "card_open": case.card_open, "blocked_phones": sorted(case.blocked_phones),
             "do_not_call": case.do_not_call,
@@ -341,14 +343,14 @@ class CallbackService:
                                                 d.appointment, did, now)
 
         if d.zns_template:
-            body = self.cfg.zns_templates[d.zns_template]
+            body = self.cfg.zns_for(case.campaign)[d.zns_template]
             zns_id = repo.insert_zns(c, case.case_id, did, d.zns_to, d.zns_template, body, now)
             repo.insert_outbox(c, case.case_id, did, "ZNS", {"to": d.zns_to, "template": d.zns_template,
                                                               "body": body, "zns_id": zns_id}, now)
         if d.action is Action.HAND_TO_DTV or d.dtv_priority:
             payload = handoff_context or {
                 "case_id": case.case_id, "customer_id": case.customer_id, "card_ref": case.card_ref,
-                "urgency": case.urgency.value, "card_open": case.card_open,
+                "campaign": case.campaign.value, "urgency": case.urgency.value, "card_open": case.card_open,
                 "priority": d.dtv_priority or "NORMAL", "ticket": d.ticket,
                 "rule_id": d.rule_id, "reason": d.reason, "handoff_at": repo.ts(now),
             }

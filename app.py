@@ -1,7 +1,11 @@
-"""Dashboard Flask: xem danh sách case và timeline từng quyết định của rule engine.
+"""Dashboard Flask + API nhận trigger.
+
+- Trang web: danh sách case, timeline quyết định, hành trình KH, dự đoán ưu tiên (chỉ đọc DB).
+- POST /api/alerts: cửa vào cho cảnh báo thẻ (TWO/TWFA đẩy) và cả nhắc nợ/sao kê nếu bên ngoài muốn push.
+- POST /api/webhook/zns-status: ZNS gateway báo đã gửi/đã đọc.
 
 Đọc DB (Postgres) qua db.driver.connect — URL lấy từ CALLBACK_DB_URL.
-Chỉ ĐỌC - không gọi điện, không ghi.
+Đặt ALERT_API_KEY để bắt buộc header X-Api-Key trên /api/alerts (không đặt = dev, không kiểm tra).
 
 Chạy: CALLBACK_DB_URL=postgresql://... python app.py
 """
@@ -16,7 +20,9 @@ from flask import Flask, abort, jsonify, render_template, request
 
 from callback.config import load_config
 from db import connect as db_connect
+from db.repo import ts as iso
 from db.service import CallbackService
+from triggers import alert_from_payload
 
 DB_URL = os.environ.get("CALLBACK_DB_URL", "postgresql://postgres:cb@localhost:5432/callback")
 
@@ -86,7 +92,11 @@ def index():
         """))
     finally:
         conn.close()
-    return render_template("index.html", cases=rows, db_url=DB_URL)
+    cfg = load_config()
+    campaigns = {ct.value: {"label": camp.label,
+                            "max_calls": {u.value: lv.max_calls_24h for u, lv in camp.levels.items()}}
+                 for ct, camp in cfg.campaigns.items()}
+    return render_template("index.html", cases=rows, db_url=DB_URL, campaigns=campaigns)
 
 
 @app.route("/case/<case_id>")
@@ -147,6 +157,33 @@ def customer_journey(customer_id):
     decisions = [{**dict(d), "detail_parsed": json.loads(d["detail"])} for d in decisions]
     return render_template("customer.html", customer_id=customer_id, cases=cases,
                            decisions=decisions, attempts=attempts, zns=zns)
+
+
+@app.route("/api/alerts", methods=["POST"])
+def api_alerts():
+    """Nhận một cảnh báo (hợp đồng dữ liệu: triggers/payload.py). Cùng alert_id gửi lại -> 200, duplicate."""
+    api_key = os.environ.get("ALERT_API_KEY")
+    if api_key and request.headers.get("X-Api-Key") != api_key:
+        return jsonify({"error": "sai hoặc thiếu X-Api-Key"}), 401
+    now = datetime.now(timezone.utc)
+    try:
+        a = alert_from_payload(request.get_json(silent=True), now)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    conn = db()
+    try:
+        svc = CallbackService(conn, load_config(), config_version="api")
+        r = svc.ingest_alert(a.alert, a.phone, now, phone_sms=a.phone_sms)
+    finally:
+        conn.close()
+
+    body = {"case_id": r.case_id, "merged": r.merged, "duplicate": r.duplicate,
+            "campaign": a.alert.campaign.value}
+    if r.decision is not None:
+        body["decision"] = {"action": r.decision.action.value, "rule_id": r.decision.rule_id,
+                            "reason": r.decision.reason, "next_call_at": iso(r.decision.next_call_at)}
+    return jsonify(body), (200 if r.duplicate else 201)
 
 
 @app.route("/api/webhook/zns-status", methods=["POST"])

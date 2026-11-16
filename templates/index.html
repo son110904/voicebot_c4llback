@@ -31,16 +31,18 @@
 <div class="card" style="padding: 0;">
 <table>
 <thead><tr>
-<th>Case</th><th>Mức</th><th>Trạng thái</th><th>Thẻ / KH</th>
+<th>Case</th><th>Campaign</th><th>Mức</th><th>Trạng thái</th><th>Thẻ / KH</th>
 <th>Cảnh báo</th><th>Số cuộc đã tính</th><th>ZNS</th><th>Gọi tiếp</th>
 </tr></thead>
 <tbody>
 {% for c in cases %}
 {% if not request.args.get('status') or request.args.get('status') == c.status %}
-{% set max_calls = {'P1': 5, 'P2': 3, 'P3': 3}[c.urgency] %}
+{% set camp = campaigns.get(c.campaign) %}
+{% set max_calls = camp.max_calls[c.urgency] if camp else 3 %}
 {% set pct = (c.counted / max_calls * 100) if max_calls else 0 %}
 <tr class="row-link" onclick="location.href='/case/{{ c.case_id }}'">
   <td><strong>{{ c.case_id }}</strong></td>
+  <td title="{{ camp.label if camp else c.campaign }}">{{ c.campaign }}</td>
   <td><span class="badge badge-{{ c.urgency|lower }}">{{ c.urgency }}</span></td>
   <td><span class="badge badge-{{ status_color[c.status] }}">{{ c.status }}</span></td>
   <td>{{ c.card_ref }}<br><span class="muted">{{ c.customer_id }}</span></td>

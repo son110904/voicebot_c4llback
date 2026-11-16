@@ -28,7 +28,12 @@ voicebot_callback/
 │   ├── pii.py                # Che số thẻ / ĐT / CCCD / OTP / số tiền
 │   └── labeler.py            # Prompt + validate + fallback UNCLEAR
 ├── scheduler.py              # Worker: nhận lịch -> gọi -> ghi kết quả -> đẩy outbox
-├── tests/                    # 102 unit test (unittest, không cần pytest)
+├── triggers/                 # Nguồn trigger -> Alert (hợp đồng dữ liệu chung cho push và pull)
+│   ├── payload.py            # JSON/CSV -> Alert, validate; dùng bởi POST /api/alerts và job pull
+│   ├── pull_job.py           # Job mỗi sáng: lịch trả nợ / sao kê đến hạn -> Alert (loan_due, statement_due)
+│   └── push_mock.py          # Giả lập TWO/TWFA POST cảnh báo thẻ vào /api/alerts
+├── mock_data/                # CSV giả cho 3 nguồn; thay bằng bảng/API thật khi bank cấp
+├── tests/                    # ~120 unit test (unittest, không cần pytest)
 ├── demo_rules.py             # Mô phỏng rule engine
 └── demo_db.py                # Mô phỏng cả luồng lưu DB
 ```
@@ -61,6 +66,25 @@ Trên Codespaces, port 5000 sẽ tự được chuyển ra ngoài - click vào t
 copy URL public cho mentor. Mỗi case có timeline các quyết định của rule engine
 (mỗi bước có badge nhóm, lý do, lịch gọi tiếp, ZNS, nhãn LLM) và danh sách cuộc
 gọi + outbox + ZNS.
+
+### Trigger: cảnh báo thẻ (push) và nhắc nợ / sao kê (pull)
+
+Mỗi case thuộc một `campaign`: `card_fraud`, `loan_due`, `statement_due`. Campaign quyết định cách tính
+mức khẩn, giới hạn lượt, khung giờ, mẫu ZNS và câu nêu mục đích của bot (khối `campaigns` trong
+`campaign_rules.yaml`). Cảnh báo khác campaign không gộp vào nhau.
+
+```bash
+# TWO/TWFA đẩy cảnh báo thẻ (hiện giả lập từ CSV)
+python app.py &
+python -m triggers.push_mock --csv mock_data/two_alerts.csv
+
+# Job pull mỗi sáng (cron / Task Scheduler): nhắc nợ và sao kê sắp đến hạn
+python -m triggers.pull_job --campaign loan_due      --csv mock_data/loan_due.csv      --dry-run
+python -m triggers.pull_job --campaign statement_due --csv mock_data/statement_due.csv
+```
+
+Hợp đồng JSON của `POST /api/alerts` nằm ở đầu `triggers/payload.py`. Đặt `ALERT_API_KEY` để bắt buộc
+header `X-Api-Key`. Chạy lại job cùng ngày không tạo case trùng (alert_id = CAMPAIGN-hợp đồng-ngày hạn).
 
 ### Dialer tích hợp Freeswitch/Asterisk
 
@@ -152,5 +176,6 @@ Các điểm chính:
 | | `Phone_SMS` | Số KH đã đăng ký nhận tin nhắn, dùng làm số dự phòng |
 ## Chưa làm
 
-- Nối thật với TWO/TWFA, Freeswitch/Asterisk, agent của Đạt.
+- Nguồn trigger thật thay cho `mock_data/` (danh sách tài nguyên cần xin: mục 11 của `docs/call_controller_spec.md`).
+- Nối thật với Freeswitch/Asterisk, agent của Đạt.
 - Dashboard theo dõi tình trạng case.

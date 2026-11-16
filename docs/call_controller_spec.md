@@ -55,6 +55,7 @@ Bốn khối đã có code; hai khối còn thiếu là session controller thậ
 | CallbackService | Mỗi hàm là một transaction: `start_call`, `record_call_result`, `recover_lost_calls`, ghi outbox | `db/service.py` | Đã có, 7 bảng Postgres |
 | Outbox dispatcher | Gửi từng event outbox tới ZNS gateway / iPay / hàng đợi ĐTV / agent của Đạt, đánh dấu SENT hoặc lỗi | giao diện `OutboxDispatcher` trong `scheduler.py` | Chưa có sender thật |
 | FreeSWITCH | PBX: SIP trunk, dialplan, media, ghi âm, AMD | `virtual-pbx/` (Docker, image `safarov/freeswitch`) | Chạy local, Linphone đăng ký được qua TCP |
+| Trigger (push + pull) | Biến cảnh báo TWO (push `POST /api/alerts`) và lịch trả nợ / sao kê (job pull mỗi sáng) thành `Alert` theo một hợp đồng dữ liệu; gắn `campaign` để rule engine chọn mức khẩn, ZNS, kịch bản riêng | `triggers/payload.py`, `triggers/pull_job.py`, `app.py` | Đã có, nguồn là CSV trong `mock_data/`; đổi nguồn thật không đổi hợp đồng |
 
 ## 4. Vòng đời một cuộc gọi
 
@@ -253,3 +254,20 @@ Mọi cuộc gọi phải truy ngược được từ `call_id` tới quyết đ
 3. Chạy end-to-end: `seed_demo.py` → scheduler → `ESLDialer` (loopback) → session controller → DB; kiểm tra timeline trên dashboard.
 4. Outbox dispatcher thật, bắt đầu từ `DTV_HANDOFF` và `CASE_FINAL` cho agent của Đạt.
 5. Nối trunk thật, đối chiếu mã SIP, đo độ trễ rồi quyết định có lên phương án B.
+
+## 11. Tài nguyên cần xin từ trung tâm ngân hàng số
+
+Không có các nguồn dưới đây thì hệ thống chỉ chạy với dữ liệu mock trong `mock_data/`. Hợp đồng dữ liệu phía mình đã cố định (`triggers/payload.py`); bên trung tâm chỉ cần điền đúng trường.
+
+| Tài nguyên | Dùng cho | Trường / cách gọi cần | Hình thức nối (chọn một) |
+| --- | --- | --- | --- |
+| Webhook hoặc bảng cảnh báo TWO/TWFA | `card_fraud` | `alert_id`, `card_ref` (token, không phải số thẻ), `customer_id`, `amount_vnd`, `approved`, `card_blocked`, `phone`, `phone_sms`, thời điểm cảnh báo | Họ `POST /api/alerts` (mình mở port + cấp `X-Api-Key`), hoặc mình đọc bảng/queue của họ theo chu kỳ |
+| Bảng lịch trả nợ (core banking / LOS) | `loan_due` | `contract_ref`, `customer_id`, `phone`, `phone_sms`, số tiền kỳ này, ngày đến hạn | Job pull mỗi sáng đọc view hoặc API |
+| Bảng sao kê thẻ tín dụng | `statement_due` | `card_ref` (token), `customer_id`, `phone`, số tiền tối thiểu / tổng, ngày đến hạn | Job pull mỗi sáng |
+| API tra số điện thoại theo CIF | mọi campaign, khi nguồn không kèm số | CIF → `phone`, `phone_sms` | REST đồng bộ |
+| API trạng thái thẻ (`card_checker`) | `card_fraud`, gọi ngay trước mỗi lần quay số | `card_ref` → còn mở / đã khóa | REST, trả lời dưới 1 giây |
+| Số ĐTV online (`dtv_counter`) | hoãn gọi khi không có ĐTV | số nguyên | API tổng đài hoặc bảng ca trực |
+| ZNS gateway | ZNS, thông báo trước cuộc gọi | OA id, template đã Zalo duyệt, API key; webhook trạng thái về `/api/webhook/zns-status` | REST + webhook |
+| Push iPay | `PUSH_IPAY` | API gửi notification theo CIF | REST |
+| SIP trunk | gọi ra KH | IP/port, tài khoản, số kênh đồng thời, caller ID 1900558868 | SIP/UDP hoặc TCP |
+| Đường mạng | tất cả | VPN hoặc whitelist IP máy chạy worker; hoặc họ push ra endpoint công khai có API key | — |

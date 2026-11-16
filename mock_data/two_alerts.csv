@@ -1,0 +1,5 @@
+alert_id,card_ref,customer_id,phone,phone_sms,amount_vnd,approved,card_blocked,created_at
+TWO-1001,tok-card-A1,KH-A,0901000001,0981000001,1500000,true,false,2026-11-16T09:05:00+07:00
+TWO-1002,tok-card-B1,KH-B,0901000002,,65000000,false,true,2026-11-16T09:06:00+07:00
+TWO-1003,tok-card-C1,KH-C,0901000003,0981000003,800000,false,false,2026-11-16T09:07:00+07:00
+TWO-1004,tok-card-A1,KH-A,0901000001,0981000001,2200000,true,false,2026-11-16T09:12:00+07:00

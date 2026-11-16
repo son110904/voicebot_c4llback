@@ -5,7 +5,7 @@ Cùng đầu vào -> cùng quyết định, nên test được và tái hiện �
 
 - decide()          sau mỗi cuộc gọi: làm gì tiếp (gọi lại lúc nào, ZNS, chuyển ĐTV, dừng...)
 - pre_dial_check()  ngay trước khi quay số: case còn được gọi không, giờ này gọi được không
-- merge_alert()     cảnh báo mới của cùng thẻ/KH khi case đang mở: gộp, nâng mức khẩn, không reset lượt
+- merge_alert()     cảnh báo mới cùng campaign của cùng thẻ/KH khi case đang mở: gộp, nâng mức khẩn, không reset lượt
 - apply_decision()  cập nhật Case theo Decision (cho tầng DB/scheduler)
 
 Mỗi Decision có rule_id + reason để ghi bảng decisions và giải thích với nghiệp vụ.
@@ -80,7 +80,7 @@ class _Ctx:
 
     @property
     def level(self) -> LevelConfig:
-        return self.cfg.levels[self.case.urgency]
+        return self.cfg.level(self.case.campaign, self.case.urgency)
 
 
 # =============================================================== hàm công khai
@@ -137,6 +137,8 @@ def merge_alert(case: Case, alert: Alert, attempts: Sequence[Attempt], now: date
     """Gộp cảnh báo mới vào case đang mở của cùng thẻ/KH. None = không gộp, tạo case mới."""
     _require_aware(now, alert.created_at, *(a.started_at for a in attempts))
     if case.status is not CaseStatus.OPEN:
+        return None
+    if alert.campaign is not case.campaign:  # nhắc nợ không gộp vào case cảnh báo thẻ và ngược lại
         return None
     if alert.card_ref != case.card_ref and alert.customer_id != case.customer_id:
         return None

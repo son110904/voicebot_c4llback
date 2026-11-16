@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from .models import OUTCOME_GROUP, Group, Outcome, Urgency
+from .models import OUTCOME_GROUP, CampaignType, Group, Outcome, Urgency
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "campaign_rules.yaml"
 
@@ -62,6 +62,19 @@ class OutcomeConfig:
 
 
 @dataclass(frozen=True)
+class CampaignConfig:
+    """Một campaign = một lý do gọi, với mức khẩn, mẫu ZNS và mục đích kịch bản riêng."""
+    label: str                                # tên hiển thị cho dashboard / ĐTV
+    script_purpose: str                       # bot nêu lý do gọi bằng câu này (session controller đọc)
+    levels: Mapping[Urgency, LevelConfig]
+    zns_templates: Mapping[str, str]          # pre_call / contact / final
+    urgent_within_days: int = 0               # loan_due/statement_due: còn <= n ngày -> P2
+    overdue_days_p1: int = 0                  # loan_due/statement_due: quá hạn >= n ngày -> P1
+    lookahead_days: int = 0                   # job pull: lấy các khoản đến hạn trong n ngày tới
+    max_overdue_days: int = 0                 # job pull: quá hạn hơn n ngày -> không còn là việc của bot
+
+
+@dataclass(frozen=True)
 class Config:
     tz: timezone
     docs_min_gap_minutes: int
@@ -82,8 +95,15 @@ class Config:
     zns_max_per_case: int
     zns_templates: Mapping[str, str]
     opt_out_prompt: str
-    levels: Mapping[Urgency, LevelConfig]
+    levels: Mapping[Urgency, LevelConfig]     # = campaigns[card_fraud].levels (giữ cho code/test cũ)
     outcomes: Mapping[Outcome, OutcomeConfig]
+    campaigns: Mapping[CampaignType, CampaignConfig]
+
+    def level(self, campaign: CampaignType, urgency: Urgency) -> LevelConfig:
+        return self.campaigns[campaign].levels[urgency]
+
+    def zns_for(self, campaign: CampaignType) -> Mapping[str, str]:
+        return self.campaigns[campaign].zns_templates
 
 
 def load_config(path: str | Path | None = None) -> Config:
@@ -105,8 +125,8 @@ def parse_config(raw: dict[str, Any]) -> Config:
     return cfg
 
 
-def _build(raw: dict[str, Any]) -> Config:
-    levels = {
+def _levels(raw_levels: dict[str, Any]) -> dict[Urgency, LevelConfig]:
+    return {
         Urgency(k): LevelConfig(
             max_calls_24h=int(v["max_calls_24h"]),
             min_gap_minutes=int(v["min_gap_minutes"]),
@@ -116,8 +136,44 @@ def _build(raw: dict[str, Any]) -> Config:
             appointment_max_wait_minutes=int(v["appointment_max_wait_minutes"]),
             max_appointments=int(v["max_appointments"]),
         )
-        for k, v in raw["levels"].items()
+        for k, v in raw_levels.items()
     }
+
+
+def _campaigns(raw: dict[str, Any], base_levels: dict[Urgency, LevelConfig],
+               base_zns: dict[str, str]) -> dict[CampaignType, CampaignConfig]:
+    """card_fraud mặc định dùng `levels` và `zns.templates` ở top-level; campaign khác phải khai báo đủ."""
+    out: dict[CampaignType, CampaignConfig] = {}
+    for key, v in (raw.get("campaigns") or {}).items():
+        ct = CampaignType(key)
+        if ct is CampaignType.CARD_FRAUD:
+            levels = _levels(v["levels"]) if "levels" in v else base_levels
+            zns = dict(v.get("zns_templates") or base_zns)
+        else:
+            levels = _levels(v["levels"])
+            zns = dict(v["zns_templates"])
+        out[ct] = CampaignConfig(
+            label=str(v["label"]),
+            script_purpose=str(v["script_purpose"]),
+            levels=levels,
+            zns_templates=zns,
+            urgent_within_days=int(v.get("urgent_within_days", 0)),
+            overdue_days_p1=int(v.get("overdue_days_p1", 0)),
+            lookahead_days=int(v.get("lookahead_days", 0)),
+            max_overdue_days=int(v.get("max_overdue_days", 0)),
+        )
+    if CampaignType.CARD_FRAUD not in out:
+        out[CampaignType.CARD_FRAUD] = CampaignConfig(
+            label="Xác thực giao dịch thẻ nghi gian lận",
+            script_purpose=str(raw.get("call_script", {}).get("purpose_card_fraud", "")),
+            levels=base_levels, zns_templates=base_zns,
+        )
+    return out
+
+
+def _build(raw: dict[str, Any]) -> Config:
+    levels = _levels(raw["levels"])
+    zns_templates = dict(raw["zns"]["templates"])
     outcomes = {
         Outcome(k): OutcomeConfig(
             delays=tuple(int(x) for x in v["delays"]),
@@ -144,29 +200,61 @@ def _build(raw: dict[str, Any]) -> Config:
         multi_alert_count=int(raw["urgency"]["multi_alert_count"]),
         dtv_recheck_minutes=int(raw.get("dtv_recheck_minutes", 5)),
         zns_max_per_case=int(raw["zns"]["max_per_case"]),
-        zns_templates=dict(raw["zns"]["templates"]),
+        zns_templates=zns_templates,
         opt_out_prompt=str(raw.get("call_script", {}).get("opt_out_prompt", "")),
         levels=levels,
         outcomes=outcomes,
+        campaigns=_campaigns(raw, levels, zns_templates),
     )
+
+
+def _validate_levels(cfg: Config, levels: Mapping[Urgency, LevelConfig], prefix: str) -> list[str]:
+    errs: list[str] = []
+    for u in Urgency:
+        if u not in levels:
+            errs.append(f"{prefix}thiếu cấu hình mức {u.value}")
+    for u, lv in levels.items():
+        if lv.min_gap_minutes < cfg.docs_min_gap_minutes:
+            errs.append(f"{prefix}{u.value}: min_gap_minutes={lv.min_gap_minutes} < {cfg.docs_min_gap_minutes} phút theo docs")
+        if lv.max_calls_24h < 1:
+            errs.append(f"{prefix}{u.value}: max_calls_24h phải >= 1")
+        if lv.max_days <= 0:
+            errs.append(f"{prefix}{u.value}: max_days phải > 0")
+        if lv.zns_after_failures < 1:
+            errs.append(f"{prefix}{u.value}: zns_after_failures phải >= 1")
+        if lv.appointment_max_wait_minutes <= 0 or lv.max_appointments < 0:
+            errs.append(f"{prefix}{u.value}: cấu hình hẹn gọi lại không hợp lệ")
+    return errs
+
+
+def _validate_zns_templates(templates: Mapping[str, str], prefix: str) -> list[str]:
+    errs: list[str] = []
+    for key in ("pre_call", "contact", "final"):
+        text = templates.get(key)
+        if not text:
+            errs.append(f"{prefix}thiếu mẫu ZNS '{key}'")
+        elif "{" in text or "}" in text:
+            errs.append(f"{prefix}mẫu ZNS '{key}' không được có biến - KHÔNG chứa chi tiết giao dịch")
+    return errs
 
 
 def _validate(cfg: Config) -> list[str]:
     errs: list[str] = []
-    for u in Urgency:
-        if u not in cfg.levels:
-            errs.append(f"thiếu cấu hình mức {u.value}")
-    for u, lv in cfg.levels.items():
-        if lv.min_gap_minutes < cfg.docs_min_gap_minutes:
-            errs.append(f"{u.value}: min_gap_minutes={lv.min_gap_minutes} < {cfg.docs_min_gap_minutes} phút theo docs")
-        if lv.max_calls_24h < 1:
-            errs.append(f"{u.value}: max_calls_24h phải >= 1")
-        if lv.max_days <= 0:
-            errs.append(f"{u.value}: max_days phải > 0")
-        if lv.zns_after_failures < 1:
-            errs.append(f"{u.value}: zns_after_failures phải >= 1")
-        if lv.appointment_max_wait_minutes <= 0 or lv.max_appointments < 0:
-            errs.append(f"{u.value}: cấu hình hẹn gọi lại không hợp lệ")
+    errs += _validate_levels(cfg, cfg.levels, "")
+    for ct in CampaignType:
+        if ct not in cfg.campaigns:
+            errs.append(f"thiếu cấu hình campaign '{ct.value}'")
+    for ct, camp in cfg.campaigns.items():
+        prefix = f"campaign {ct.value}: "
+        errs += _validate_levels(cfg, camp.levels, prefix)
+        errs += _validate_zns_templates(camp.zns_templates, prefix)
+        if not camp.label.strip() or not camp.script_purpose.strip():
+            errs.append(prefix + "thiếu label hoặc script_purpose")
+        if ct is not CampaignType.CARD_FRAUD:
+            if camp.urgent_within_days < 0 or camp.overdue_days_p1 < 1:
+                errs.append(prefix + "urgent_within_days phải >= 0 và overdue_days_p1 phải >= 1")
+            if camp.lookahead_days < 0 or camp.max_overdue_days < camp.overdue_days_p1:
+                errs.append(prefix + "lookahead_days phải >= 0 và max_overdue_days phải >= overdue_days_p1")
 
     need = {o for o, (g, _) in OUTCOME_GROUP.items() if g in (Group.RETRY_CUSTOMER, Group.RETRY_SYSTEM)}
     for o in sorted(need - set(cfg.outcomes), key=lambda o: o.value):
@@ -177,12 +265,7 @@ def _validate(cfg: Config) -> list[str]:
         if oc.max_per_case is not None and oc.max_per_case < 1:
             errs.append(f"outcome '{o.value}': max_per_case phải >= 1")
 
-    for key in ("pre_call", "contact", "final"):
-        text = cfg.zns_templates.get(key)
-        if not text:
-            errs.append(f"thiếu mẫu ZNS '{key}'")
-        elif "{" in text or "}" in text:
-            errs.append(f"mẫu ZNS '{key}' không được có biến - KHÔNG chứa chi tiết giao dịch")
+    errs += _validate_zns_templates(cfg.zns_templates, "")
     if cfg.zns_max_per_case < 1:
         errs.append("zns.max_per_case phải >= 1")
     if not cfg.hotline.strip():

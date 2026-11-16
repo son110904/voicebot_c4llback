@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS cases (
     updated_at     TEXT NOT NULL,
     version        INTEGER NOT NULL DEFAULT 0
 );
+-- Migration: campaign (card_fraud / loan_due / statement_due) thêm sau khi bảng đã tồn tại
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS campaign TEXT NOT NULL DEFAULT 'card_fraud';
 CREATE INDEX IF NOT EXISTS ix_cases_card ON cases (card_ref, status);
 CREATE INDEX IF NOT EXISTS ix_cases_customer ON cases (customer_id, status);
 
@@ -35,6 +37,8 @@ CREATE TABLE IF NOT EXISTS alerts (
     created_at   TEXT NOT NULL,
     received_at  TEXT NOT NULL
 );
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS campaign TEXT NOT NULL DEFAULT 'card_fraud';
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS due_date TEXT;  -- YYYY-MM-DD, chỉ loan_due/statement_due
 
 CREATE TABLE IF NOT EXISTS call_attempts (
     attempt_id             BIGSERIAL PRIMARY KEY,
