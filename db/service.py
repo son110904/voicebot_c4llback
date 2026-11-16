@@ -142,11 +142,14 @@ class CallbackService:
                               bool(r["appointment"])) for r in rows]
 
     def start_call(self, schedule_id: int, now: datetime, dtv_online_count: int | None = None) -> Decision:
-        """Kiểm tra lại ngay trước khi quay số. DIAL_NOW -> agent gọi số decision.target_phone."""
+        """Kiểm tra lại ngay trước khi quay số. DIAL_NOW -> agent gọi số decision.target_phone.
+
+        Nhận lịch CLAIMED (worker đã claim) hoặc PENDING (P1 gọi thẳng qua `immediate_call`, bỏ qua vòng claim).
+        """
         with repo.transaction(self.conn) as c:
             s = repo.get_schedule(c, schedule_id)
-            if s is None or s["status"] != "CLAIMED":
-                raise ValueError(f"Lịch {schedule_id} không ở trạng thái CLAIMED")
+            if s is None or s["status"] not in ("CLAIMED", "PENDING"):
+                raise ValueError(f"Lịch {schedule_id} không ở trạng thái CLAIMED/PENDING")
             case, version = repo.get_case(c, s["case_id"], self.tz)
 
             if self.card_checker is not None and case.card_open:

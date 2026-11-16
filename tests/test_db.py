@@ -11,7 +11,10 @@ import os
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from callback import Action, Alert, CaseStatus, Outcome, load_config
+import yaml
+
+from callback import Action, Alert, CaseStatus, Outcome, load_config, parse_config
+from callback.config import DEFAULT_PATH
 from db import CallbackService, ConcurrentUpdateError, LlmLabel, connect, reset
 from db import repo
 
@@ -20,7 +23,16 @@ if not URL.startswith(("postgres://", "postgresql://")):
     raise unittest.SkipTest("Cần CALLBACK_DB_URL=postgresql://... để chạy test DB")
 
 VN = timezone(timedelta(hours=7))
-CFG = load_config()
+
+
+def config_without_push_lead():
+    """Config mặc định nhưng không lùi cuộc gọi đầu để chờ push iPay -> mốc giờ trong test gọn."""
+    raw = yaml.safe_load(DEFAULT_PATH.read_text(encoding="utf-8"))
+    raw["pre_call"]["push_lead_minutes"] = 0
+    return parse_config(raw)
+
+
+CFG = config_without_push_lead()
 PRIMARY = "0900000001"
 
 
@@ -54,7 +66,8 @@ class Base(unittest.TestCase):
         self.svc = CallbackService(self.conn, CFG, config_version="test-v1")
 
     def count(self, sql, *args):
-        return self.conn.execute(sql, args).fetchone()[0]
+        """sql dạng SELECT COUNT(*) ...; driver trả dict nên lấy giá trị đầu tiên thay vì [0]."""
+        return next(iter(self.conn.execute(sql, args).fetchone().values()))
 
     def case(self, case_id="CASE-A1"):
         return repo.get_case(self.conn, case_id, VN)[0]
@@ -75,7 +88,7 @@ class AlertTest(Base):
         r = self.svc.ingest_alert(alert(), PRIMARY, at(21, 9))
         self.assertFalse(r.merged)
         self.assertEqual(r.decision.action, Action.DIAL_NOW)
-        self.assertIn("Tạo case mới mức P2", r.decision.reason)
+        self.assertIn("Tạo case card_fraud mức P2", r.decision.reason)
         self.assertEqual(self.case().urgency.value, "P2")
         self.assertEqual(self.count("SELECT COUNT(*) FROM schedule WHERE status = 'PENDING'"), 1)
         self.assertEqual(self.count("SELECT COUNT(*) FROM decisions WHERE config_version = 'test-v1'"), 1)
@@ -98,7 +111,8 @@ class AlertTest(Base):
         self.assertEqual(self.count("SELECT COUNT(*) FROM call_attempts"), 1)
         rows = self.conn.execute("SELECT due_at FROM schedule WHERE status = 'PENDING'").fetchall()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(repo.from_ts(rows[0]["due_at"], VN), at(21, 9, 10))  # gọi sớm hơn 9:11
+        # lên P1 (min_gap 5 phút) -> được gọi ngay lúc gộp 9:05, sớm hơn lịch cũ 9:11 của P2
+        self.assertEqual(repo.from_ts(rows[0]["due_at"], VN), at(21, 9, 5))
 
     def test_merge_while_dialing_waits_for_result(self):
         self.svc.ingest_alert(alert(), PRIMARY, at(21, 9))
@@ -120,6 +134,30 @@ class AlertTest(Base):
         self.assertEqual(self.case(r.case_id).status, CaseStatus.HUMAN)
         self.assertEqual(self.count("SELECT COUNT(*) FROM schedule WHERE case_id = ? AND status = 'PENDING'",
                                     r.case_id), 0)
+
+
+class PreCallPushTest(Base):
+    """Config thật (push_lead_minutes=5): P2/P3 lùi cuộc gọi đầu 5 phút để KH kịp thấy push iPay, P1 không chờ."""
+
+    def setUp(self):
+        super().setUp()
+        self.svc = CallbackService(self.conn, load_config(), config_version="test-v1")
+
+    def test_p2_first_call_waits_for_push(self):
+        r = self.svc.ingest_alert(alert(), PRIMARY, at(21, 9))
+        self.assertEqual(r.decision.action, Action.SCHEDULE_CALL)
+        self.assertEqual(r.decision.next_call_at, at(21, 9, 5))
+        self.assertIn("push iPay báo trước 5 phút", r.decision.reason)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM outbox WHERE event_type = 'PUSH_IPAY'"), 1)
+        self.assertEqual(self.svc.claim_due_calls(at(21, 9, 4), "w1"), [])
+        self.assertEqual(len(self.svc.claim_due_calls(at(21, 9, 5), "w1")), 1)
+
+    def test_p1_calls_immediately(self):
+        r = self.svc.ingest_alert(p1_alert(), PRIMARY, at(21, 9))
+        self.assertEqual(r.decision.action, Action.DIAL_NOW)
+        self.assertIsNotNone(r.immediate_call)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM outbox WHERE event_type = 'PUSH_IPAY'"), 1)
+        self.assertEqual(len(self.svc.claim_due_calls(at(21, 9), "w1")), 1)
 
 
 class SchedulerTest(Base):

@@ -6,14 +6,16 @@ Test kiem tra:
   - Originate error parsing
   - Full flow qua mock ESL server (gevent-based)
 """
+import unittest
 from datetime import datetime, timezone
 
-import gevent
-import gevent.socket
-
-import pytest
-
-from dialer.esl_dialer import ESLDialer, ESLDialerConfig, _CallState, _CAUSE_TO_STATUS
+try:
+    import gevent
+    import gevent.socket
+    import pytest
+    from dialer.esl_dialer import ESLDialer, ESLDialerConfig, _CallState, _CAUSE_TO_STATUS
+except ImportError as e:  # gevent/greenswitch/pytest chỉ có trong image esl-server, không bắt buộc ở máy dev
+    raise unittest.SkipTest(f"Cần gevent + greenswitch + pytest để test ESL dialer: {e}")
 
 
 class FakeScheduledCall:

@@ -6,7 +6,10 @@ import os
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from callback import Alert, Outcome, load_config
+import yaml
+
+from callback import Alert, Outcome, parse_config
+from callback.config import DEFAULT_PATH
 from db import CallbackService, LlmLabel, connect, reset
 from scheduler import DialResult, Scheduler, SchedulerConfig
 
@@ -16,6 +19,16 @@ if not URL.startswith(("postgres://", "postgresql://")):
 
 VN = timezone(timedelta(hours=7))
 PRIMARY = "0900000001"
+
+
+def config_without_push_lead():
+    """Không lùi cuộc gọi đầu chờ push iPay, để lịch P2 tới hạn ngay lúc ingest (xem test_db.PreCallPushTest)."""
+    raw = yaml.safe_load(DEFAULT_PATH.read_text(encoding="utf-8"))
+    raw["pre_call"]["push_lead_minutes"] = 0
+    return parse_config(raw)
+
+
+CFG = config_without_push_lead()
 
 
 def at(day, h, m=0, s=0):
@@ -53,7 +66,7 @@ def new_svc(**kwargs):
     if _CONN is None:
         _CONN = connect(URL)
     reset(_CONN)
-    return CallbackService(_CONN, load_config(), config_version="sched-test", **kwargs)
+    return CallbackService(_CONN, CFG, config_version="sched-test", **kwargs)
 
 
 def seed(svc, now, approved=False, blocked=True):
@@ -101,26 +114,28 @@ class P1BypassTest(unittest.TestCase):
             "SELECT outcome FROM call_attempts WHERE case_id = ?",
             (result.case_id,)).fetchone()
         self.assertEqual(row["outcome"], "verified_confirmed")
+        # lịch đã DONE -> worker tick sau không gọi lại cuộc này
+        self.assertEqual(Scheduler(svc, dialer, clock=Clock(now)).tick(), 0)
 
 
 class CardCheckerTest(unittest.TestCase):
-    """kiểm tra thẻ real-time trước khi gọi."""
+    """Kiểm tra thẻ real-time trước khi gọi. Chỉ chạy khi case còn card_open -> seed thẻ MỞ (P1)."""
 
     def test_card_blocked_via_ipay_closes_case(self):
-        svc = new_svc(card_checker=lambda _ref: False)  # thẻ đã bị khóa
+        svc = new_svc(card_checker=lambda _ref: False)  # KH đã tự khóa thẻ sau khi cảnh báo
         clock = Clock(at(22, 9))
-        seed(svc, at(22, 9))
+        seed(svc, at(22, 9), approved=True, blocked=False)
         s = Scheduler(svc, FakeDialer(), SchedulerConfig(worker_id="w1"), clock=clock)
         self.assertEqual(s.tick(), 0)  # không gọi vì case đã đóng
         case = svc.conn.execute("SELECT status FROM cases").fetchone()
-        self.assertEqual(case["status"], "CLOSED")
+        self.assertEqual(case["status"], "DONE")  # K5 = CLOSE: KH tự khóa thẻ qua iPay, rủi ro đã xử lý xong
         d = svc.conn.execute("SELECT rule_id FROM decisions ORDER BY decision_id DESC").fetchone()
         self.assertEqual(d["rule_id"], "K5")
 
     def test_card_still_open_proceeds_normally(self):
         svc = new_svc(card_checker=lambda _ref: True)  # thẻ vẫn mở
         clock = Clock(at(22, 9))
-        seed(svc, at(22, 9))
+        seed(svc, at(22, 9), approved=True, blocked=False)
         s = Scheduler(svc, FakeDialer(DialResult("c1", "No Answer")),
                       SchedulerConfig(worker_id="w1"), clock=clock)
         self.assertEqual(s.tick(), 1)  # gọi bình thường
@@ -130,7 +145,7 @@ class CardCheckerTest(unittest.TestCase):
             raise ConnectionError("core banking timeout")
         svc = new_svc(card_checker=bad_checker)
         clock = Clock(at(22, 9))
-        seed(svc, at(22, 9))
+        seed(svc, at(22, 9), approved=True, blocked=False)
         s = Scheduler(svc, FakeDialer(DialResult("c1", "No Answer")),
                       SchedulerConfig(worker_id="w1"), clock=clock)
         self.assertEqual(s.tick(), 1)  # fail-open: gọi thà thừa còn hơn bỏ sót
@@ -177,7 +192,7 @@ class SchedulerTest(unittest.TestCase):
                                                  llm=LlmLabel(Outcome.VERIFIED_CONFIRMED, 0.95)),
                                       call_fail=1), clock=clock)
         s.tick()                             # lần 1: dialer ném -> không ghi kết quả, lịch DIALING
-        self.assertEqual(svc.conn.execute("SELECT COUNT(*) FROM call_attempts").fetchone()[0], 0)
+        self.assertEqual(svc.conn.execute("SELECT COUNT(*) AS n FROM call_attempts").fetchone()["n"], 0)
         clock.now = at(22, 9, 16)            # 15 phút sau: recover_lost_calls kích hoạt
         s.tick()                             # recover ghi system_error, next_call_at = 09:18
         clock.now = at(22, 9, 18)
