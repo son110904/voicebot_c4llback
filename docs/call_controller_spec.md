@@ -1,6 +1,6 @@
 # Đặc tả Call Controller
 
-Cập nhật 16/11/2026. Bản sống để đồng nghiệp sửa và comment nằm trên Claude Docs; file này là bản xuất để đọc trên GitHub.
+Cập nhật 16/11/2026
 
 Call controller là lớp điều phối cuộc gọi outbound của voicebot xác thực giao dịch thẻ nghi gian lận: lấy lịch gọi từ DB, quay số qua FreeSWITCH, điều khiển hội thoại cùng voice agent, thu kết quả và đưa về rule engine để quyết định bước tiếp. Rule engine, DB, LLM labeler và scheduler đã có trong repo `voicebot_callback`; tài liệu này đặc tả phần nối chúng với tổng đài thật và voice agent.
 
@@ -246,27 +246,6 @@ Mọi cuộc gọi phải truy ngược được từ `call_id` tới quyết đ
 - ESL: đổi mật khẩu mặc định `ClueCon`, cổng 8021 và 8084 chỉ mở trong mạng nội bộ Docker.
 - Ghi âm: nơi lưu, thời hạn giữ, ai được nghe — chưa chốt (mục 12).
 
-## 11. Trạng thái hiện tại và việc còn lại
-
-Phần quyết định và lưu trữ đã xong; phần còn lại tập trung vào session controller thật và voice agent.
-
-| Việc | Trạng thái | Ghi chú |
-| --- | --- | --- |
-| Rule engine + 102 unit test | Xong | `callback/`, `tests/` |
-| Postgres 7 bảng + `CallbackService` | Xong | `db/` |
-| Scheduler với dialer giả | Xong | `scheduler.py`, `demo_dial.py` |
-| `ESLDialer` quay số qua ESL | Xong, test loopback | `dialer/esl_dialer.py` |
-| FreeSWITCH Docker + dialplan + ESL outbound mô phỏng | Xong | `virtual-pbx/`, ext 9992 đến 9994, 9985 |
-| Linphone đăng ký vào FreeSWITCH | Xong (TCP) | user 1001, 1002 |
-| Test 2 máy Linphone gọi nhau qua FreeSWITCH | Đang làm | Máy thứ hai mượn của chị Hường |
-| Session controller thật theo kịch bản mục 6 | Chưa | Thay tone bằng TTS + record + gọi agent |
-| Cầu nối voice agent phương án A | Chưa | Chờ model chạy trên máy GPU |
-| Chuyển ĐTV trong cuộc gọi (bridge sang máy nhánh hoặc hàng đợi) | Chưa | Hiện chỉ tạo ticket `DTV_HANDOFF` |
-| Outbox dispatcher thật (ZNS, iPay, ĐTV, agent Đạt) | Chưa | Có giao diện, chưa có sender |
-| `uuid_kill` khi quá `call_timeout`, `max_concurrent_calls` | Chưa | Mục 8 |
-| SIP trunk thật + đối chiếu bảng mã SIP | Chưa | Cần tổng đài của bank |
-| Thống nhất caller ID (YAML vs code) | Chưa | Mục 9 |
-
 **Thứ tự làm đề xuất:**
 
 1. Xong test 2 máy Linphone (echo 9998, gọi 1001 ↔ 1002) để chắc audio hai chiều qua FreeSWITCH.
@@ -274,16 +253,3 @@ Phần quyết định và lưu trữ đã xong; phần còn lại tập trung v
 3. Chạy end-to-end: `seed_demo.py` → scheduler → `ESLDialer` (loopback) → session controller → DB; kiểm tra timeline trên dashboard.
 4. Outbox dispatcher thật, bắt đầu từ `DTV_HANDOFF` và `CASE_FINAL` cho agent của Đạt.
 5. Nối trunk thật, đối chiếu mã SIP, đo độ trễ rồi quyết định có lên phương án B.
-
-## 12. Câu hỏi mở
-
-- [ ] Voice agent của Đạt nhận và trả audio theo dạng nào: file WAV theo lượt hay stream? Quyết định A/B ở mục 7.
-- [ ] Tổng đài của bank là FreeSWITCH hay Asterisk? Trunk trả mã SIP thế nào → cập nhật bảng trong `callback/pbx.py`.
-- [ ] Số kênh đồng thời cho phép trên trunk.
-- [ ] Chuyển ĐTV: hàng đợi ĐTV nằm ở tổng đài nào, chuyển bằng bridge ngay trong cuộc hay chỉ tạo ticket để ĐTV gọi lại?
-- [ ] `dtv_online_count` lấy từ đâu để hoãn gọi khi không có ĐTV online?
-- [ ] Câu hỏi xác thực danh tính KH là gì (ngày sinh, 4 số cuối CCCD, …) và sai tối đa mấy lần?
-- [ ] Ghi âm có bắt buộc không? Lưu ở đâu, giữ bao lâu, ai được nghe?
-- [ ] Caller ID hiển thị: 1900558868 (YAML) hay 19001560 (code)?
-- [ ] AMD (phát hiện hộp thư thoại) có bật trên FreeSWITCH không, hay để agent tự nhận ra?
-- [ ] Agent không trả lời giữa cuộc thì gán nhãn gì: `bad_audio` hay `system_error` (cả hai không tính lượt)?
