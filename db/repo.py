@@ -116,6 +116,14 @@ def alert_case(conn: Conn, alert_id: str) -> str | None:
     return r["case_id"] if r else None
 
 
+def latest_alert(conn: Conn, case_id: str) -> dict | None:
+    """Cảnh báo mới nhất của case, để dựng ngữ cảnh cho agent (merchant chưa có cột, thêm khi TWO cấp)."""
+    r = conn.execute("SELECT amount_vnd, approved, card_blocked, created_at, campaign, due_date "
+                     "FROM alerts WHERE case_id = ? ORDER BY received_at DESC, alert_id DESC LIMIT 1",
+                     (case_id,)).fetchone()
+    return dict(r) if r else None
+
+
 def insert_alert(conn: Conn, a: Alert, case_id: str, now: datetime) -> None:
     conn.execute("INSERT INTO alerts (alert_id, case_id, card_ref, customer_id, amount_vnd, approved, "
                  f"card_blocked, created_at, received_at, campaign, due_date) VALUES ({_marks(11)})",
@@ -329,6 +337,21 @@ def insert_outbox(conn: Conn, case_id: str, decision_id: int | None, event_type:
 def pending_outbox(conn: Conn, limit: int) -> list:
     return list(conn.execute("SELECT * FROM outbox WHERE status = 'PENDING' ORDER BY event_id LIMIT ?",
                              (limit,)))
+
+
+# call_outcomes: kết quả hội thoại agent POST ngược về
+
+def insert_call_outcome(conn: Conn, call_id: str, payload: dict, now: datetime) -> None:
+    """Upsert: agent có thể gửi lại cùng call_id -> ghi đè payload mới nhất."""
+    conn.execute(
+        f"INSERT INTO call_outcomes (call_id, payload, created_at) VALUES ({_marks(3)}) "
+        "ON CONFLICT (call_id) DO UPDATE SET payload = EXCLUDED.payload, created_at = EXCLUDED.created_at",
+        (call_id, json.dumps(payload, ensure_ascii=False), ts(now)))
+
+
+def read_call_outcome(conn: Conn, call_id: str) -> dict | None:
+    r = conn.execute("SELECT payload FROM call_outcomes WHERE call_id = ?", (call_id,)).fetchone()
+    return json.loads(r["payload"]) if r else None
 
 
 def mark_outbox(conn: Conn, event_id: int, now: datetime, ok: bool, error: str | None) -> None:

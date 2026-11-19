@@ -124,6 +124,30 @@ class CallbackService:
             return IngestResult(case.case_id, merged=False, duplicate=False, decision=d,
                                 immediate_call=immediate)
 
+    def call_context(self, case_id: str) -> dict:
+        """Ngữ cảnh cho agent-agent nói chuyện với KH (điểm bàn giao 1). KHÔNG chứa số thẻ đầy đủ.
+
+        StreamingDialer thêm call_id rồi POST sang agent trước khi originate.
+        """
+        got = repo.get_case(self.conn, case_id, self.tz)
+        if got is None:
+            raise KeyError(f"Không có case {case_id}")
+        case, _ = got
+        a = repo.latest_alert(self.conn, case_id)
+        camp = self.cfg.campaigns[case.campaign]
+        verify: dict = {}
+        if a is not None:
+            # merchant chưa có cột trong alerts -> thêm vào đây khi TWO cấp field
+            verify = {"amount_vnd": a["amount_vnd"], "alert_time": a["created_at"], "due_date": a["due_date"]}
+        return {
+            "case_id": case.case_id,
+            "customer_id": case.customer_id,
+            "campaign": case.campaign.value,
+            "script_purpose": camp.script_purpose,
+            "opt_out_prompt": self.cfg.opt_out_prompt,
+            "verify": verify,
+        }
+
     def _push_ipay(self, c, case: Case, now: datetime) -> None:
         """Ghi event PUSH_IPAY vào outbox để team iPay/core bank gửi notification tới app KH."""
         body = self.cfg.zns_for(case.campaign).get("pre_call", "")

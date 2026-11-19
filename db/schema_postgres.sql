@@ -137,3 +137,12 @@ CREATE TABLE IF NOT EXISTS outbox (
     sent_at     TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_outbox_pending ON outbox (status, event_id);
+
+-- Kết quả hội thoại do agent-agent (pipeline của Hiếu) POST ngược về sau khi gọi xong.
+-- Flask (/internal/calls/<id>/outcome) ghi vào đây; StreamingDialer ở worker đọc ra để dựng DialResult.
+-- Dùng bảng vì Flask và worker là 2 tiến trình khác nhau, không chung bộ nhớ.
+CREATE TABLE IF NOT EXISTS call_outcomes (
+    call_id    TEXT PRIMARY KEY,
+    payload    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);

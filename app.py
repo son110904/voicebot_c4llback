@@ -2,6 +2,7 @@
 
 - Trang web: danh sách case, timeline quyết định, hành trình KH, dự đoán ưu tiên (chỉ đọc DB).
 - POST /api/alerts: cửa vào cho cảnh báo thẻ (TWO/TWFA đẩy) và cả nhắc nợ/sao kê nếu bên ngoài muốn push.
+- POST /internal/calls/<call_id>/outcome: agent-agent báo kết quả hội thoại; StreamingDialer ở worker đọc ra.
 - POST /api/webhook/zns-status: ZNS gateway báo đã gửi/đã đọc.
 
 Đọc DB (Postgres) qua db.driver.connect — URL lấy từ CALLBACK_DB_URL.
@@ -20,6 +21,7 @@ from flask import Flask, abort, jsonify, render_template, request
 
 from callback.config import load_config
 from db import connect as db_connect
+from db import repo
 from db.repo import ts as iso
 from db.service import CallbackService
 from triggers import alert_from_payload
@@ -184,6 +186,25 @@ def api_alerts():
         body["decision"] = {"action": r.decision.action.value, "rule_id": r.decision.rule_id,
                             "reason": r.decision.reason, "next_call_at": iso(r.decision.next_call_at)}
     return jsonify(body), (200 if r.duplicate else 201)
+
+
+@app.route("/internal/calls/<call_id>/outcome", methods=["POST"])
+def call_outcome(call_id):
+    """agent-agent báo kết quả hội thoại (điểm bàn giao 2). Chỉ ghi call_outcomes; worker đọc ra.
+
+    Body JSON: {status, label, confidence, verified, callback_at?, transcript_summary?, recording_id?}.
+    Nội bộ (mạng private) — không mở ra ngoài.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "body phải là JSON object"}), 400
+    conn = db()
+    try:
+        repo.insert_call_outcome(conn, call_id, data, datetime.now(timezone.utc))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/webhook/zns-status", methods=["POST"])
